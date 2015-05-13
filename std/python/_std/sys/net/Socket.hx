@@ -262,4 +262,31 @@ private class SocketOutput extends haxe.io.Output {
         return {read:t3._1,write:t3._2,others:t3._3};
     }
 
+    public static function fast_select(read : Array<Socket>,
+                                       write : Array<Socket>,
+                                       others : Array<Socket>,
+                                       ?timeout : Float) : Void
+    {
+        // Compatible, but not fast
+        var ret = select(read, write, others, timeout);
+        if (read != null) {
+            read.splice(0, read.length);
+            while (ret.read.length > 0) {
+                read.push(ret.read.pop());
+            }
+        }
+        if (write != null) {
+            write.splice(0, write.length);
+            while (ret.write.length > 0) {
+                write.push(ret.write.pop());
+            }
+        }
+        if (others != null) {
+            others.splice(0, others.length);
+            while (ret.others.length > 0) {
+                others.push(ret.others.pop());
+            }
+        }
+    }
+
 }
