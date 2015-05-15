@@ -224,3 +224,9 @@ clean_tools:
 	ocamllex $<
 
 .PHONY: haxe libs version.cmx version.cmo haxelib
+
+# TIVO TARGETS
+
+default: all tools
+
+clobber: clean
