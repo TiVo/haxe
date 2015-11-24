@@ -1,5 +1,5 @@
 /*
-* Copyright (C)2005-2012 Haxe Foundation
+* Copyright (C)2005-2015 Haxe Foundation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -92,7 +92,7 @@ private class SocketOutput extends haxe.io.Output {
     public override function writeBytes( buf : haxe.io.Bytes, pos : Int, len : Int) : Int {
         try {
             var data    = buf.getData();
-            var payload = python.Syntax.pythonCode("data[pos:pos+len]");
+            var payload = python.Syntax.pythonCode("data[{0}:{0}+{1}]", pos, len);
             var r = __s.send(payload,0);
             return r;
         } catch( e : BlockingIOError ) {

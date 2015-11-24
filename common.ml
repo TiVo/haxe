@@ -1,23 +1,20 @@
 (*
- * Copyright (C)2005-2013 Haxe Foundation
- *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included in
- * all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+	The Haxe Compiler
+	Copyright (C) 2005-2015  Haxe Foundation
+
+	This program is free software; you can redistribute it and/or
+	modify it under the terms of the GNU General Public License
+	as published by the Free Software Foundation; either version 2
+	of the License, or (at your option) any later version.
+
+	This program is distributed in the hope that it will be useful,
+	but WITHOUT ANY WARRANTY; without even the implied warranty of
+	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+	GNU General Public License for more details.
+
+	You should have received a copy of the GNU General Public License
+	along with this program; if not, write to the Free Software
+	Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *)
 
 open Ast
@@ -144,6 +141,7 @@ type context = {
 	mutable types : Type.module_type list;
 	mutable resources : (string,string) Hashtbl.t;
 	mutable neko_libs : string list;
+	mutable include_files : (string * string) list;
 	mutable php_front : string option;
 	mutable php_lib : string option;
 	mutable php_prefix : string option;
@@ -184,6 +182,7 @@ module Define = struct
 		| Dump
 		| DumpDependencies
 		| DumpIgnoreVarIds
+		| DynamicInterfaceClosures
 		| EraseGenerics
 		| Fdb
 		| FileExtension
@@ -199,6 +198,7 @@ module Define = struct
 		| IncludePrefix
 		| Interp
 		| JavaVer
+		| JqueryVer
 		| JsClassic
 		| JsEs5
 		| JsUnflatten
@@ -223,11 +223,13 @@ module Define = struct
 		| NoSimplify
 		| NoSwfCompress
 		| NoTraces
+		| Objc
 		| PhpPrefix
 		| RealPosition
 		| ReplaceFiles
 		| Scriptable
 		| ShallowExpose
+		| SourceHeader
 		| SourceMapContent
 		| Swc
 		| SwfCompressLevel
@@ -254,18 +256,19 @@ module Define = struct
 		| As3 -> ("as3","Defined when outputing flash9 as3 source code")
 		| CheckXmlProxy -> ("check_xml_proxy","Check the used fields of the xml proxy")
 		| CoreApi -> ("core_api","Defined in the core api context")
-		| CoreApiSerialize -> ("core_api_serialize","Sets so some generated core api classes be marked with the Serializable attribute on C#")
+		| CoreApiSerialize -> ("core_api_serialize","Mark some generated core api classes with the Serializable attribute on C#")
 		| Cppia -> ("cppia", "Generate experimental cpp instruction assembly")
-		| Dce -> ("dce","The current DCE mode")
+		| Dce -> ("dce","<mode:std|full||no> Set the dead code elimination mode (default std)")
 		| DceDebug -> ("dce_debug","Show DCE log")
 		| Debug -> ("debug","Activated when compiling with -debug")
 		| Display -> ("display","Activated during completion")
 		| DllExport -> ("dll_export", "GenCPP experimental linking")
 		| DllImport -> ("dll_import", "GenCPP experimental linking")
 		| DocGen -> ("doc_gen","Do not perform any removal/change in order to correctly generate documentation")
-		| Dump -> ("dump","Dump the complete typed AST for internal debugging")
-		| DumpDependencies -> ("dump_dependencies","Dump the classes dependencies")
-		| DumpIgnoreVarIds -> ("dump_ignore_var_ids","Dump files do not contain variable IDs (helps with diff)")
+		| Dump -> ("dump","Dump the complete typed AST for internal debugging in a dump subdirectory - use dump=pretty for Haxe-like formatting")
+		| DumpDependencies -> ("dump_dependencies","Dump the classes dependencies in a dump subdirectory")
+		| DumpIgnoreVarIds -> ("dump_ignore_var_ids","Remove variable IDs from non-pretty dumps (helps with diff)")
+		| DynamicInterfaceClosures -> ("dynamic_interface_closures","Use slow path for interface closures to save space")
 		| EraseGenerics -> ("erase_generics","Erase generic classes on C#")
 		| Fdb -> ("fdb","Enable full flash debug infos for FDB interactive debugging")
 		| FileExtension -> ("file_extension","Output filename extension for cpp source code")
@@ -282,12 +285,13 @@ module Define = struct
 		| IncludePrefix -> ("include_prefix","prepend path to generated include files")
 		| Interp -> ("interp","The code is compiled to be run with --interp")
 		| JavaVer -> ("java_ver", "<version:5-7> Sets the Java version to be targeted")
+		| JqueryVer -> ("jquery_ver", "The jQuery version supported by js.jquery.*. The version is encoded as an interger. e.g. 1.11.3 is encoded as 11103")
 		| JsClassic -> ("js_classic","Don't use a function wrapper and strict mode in JS output")
 		| JsEs5 -> ("js_es5","Generate JS for ES5-compliant runtimes")
 		| JsUnflatten -> ("js_unflatten","Generate nested objects for packages and types")
 		| KeepOldOutput -> ("keep_old_output","Keep old source files in the output directory (for C#/Java)")
 		| LoopUnrollMaxCost -> ("loop_unroll_max_cost","Maximum cost (number of expressions * iterations) before loop unrolling is canceled (default 250)")
-		| Macro -> ("macro","Defined when we compile code in the macro context")
+		| Macro -> ("macro","Defined when code is compiled in the macro context")
 		| MacroTimes -> ("macro_times","Display per-macro timing when used with --times")
 		| NetVer -> ("net_ver", "<version:20-45> Sets the .NET version to be targeted")
 		| NetTarget -> ("net_target", "<name> Sets the .NET target. Defaults to \"net\". xbox, micro (Micro Framework), compact (Compact Framework) are some valid values")
@@ -307,18 +311,20 @@ module Define = struct
 		| NoSimplify -> "no_simplify",("Disable simplification filter")
 		| NoSwfCompress -> ("no_swf_compress","Disable SWF output compression")
 		| NoTraces -> ("no_traces","Disable all trace calls")
+		| Objc -> ("objc","Sets the hxcpp output to objective-c++ classes. Must be defined for interop")
 		| PhpPrefix -> ("php_prefix","Compiled with --php-prefix")
-		| RealPosition -> ("real_position","Disables haxe source mapping when targetting C#")
+		| RealPosition -> ("real_position","Disables Haxe source mapping when targetting C#, removes position comments in Java output")
 		| ReplaceFiles -> ("replace_files","GenCommon internal")
 		| Scriptable -> ("scriptable","GenCPP internal")
 		| ShallowExpose -> ("shallow-expose","Expose types to surrounding scope of Haxe generated closure without writing to window object")
+		| SourceHeader -> ("source-header","Print value as comment on top of generated files, use '' value to disable")
 		| SourceMapContent -> ("source-map-content","Include the hx sources as part of the JS source map")
 		| Swc -> ("swc","Output a SWC instead of a SWF")
 		| SwfCompressLevel -> ("swf_compress_level","<level:1-9> Set the amount of compression for the SWF output")
 		| SwfDebugPassword -> ("swf_debug_password", "Set a password for debugging")
 		| SwfDirectBlit -> ("swf_direct_blit", "Use hardware acceleration to blit graphics")
 		| SwfGpu -> ("swf_gpu", "Use GPU compositing features when drawing graphics")
-		| SwfMetadata -> ("swf_metadata", "=<file> Include contents of <file> as metadata in the swf")
+		| SwfMetadata -> ("swf_metadata", "<file> Include contents of <file> as metadata in the swf")
 		| SwfPreloaderFrame -> ("swf_preloader_frame", "Insert empty first frame in swf")
 		| SwfProtected -> ("swf_protected","Compile Haxe private as protected in the SWF instead of public")
 		| SwfScriptTimeout -> ("swf_script_timeout", "Maximum ActionScript processing time before script stuck dialog box displays (in seconds)")
@@ -342,6 +348,7 @@ module MetaInfo = struct
 		| TTypedef
 		| TAnyField
 		| TExpr
+		| TTypeParameter
 
 	type meta_parameter =
 		| HasParam of string
@@ -372,6 +379,7 @@ module MetaInfo = struct
 		| ClassCode -> ":classCode",("Used to inject platform-native code into a class",[Platforms [Java;Cs]; UsedOn TClass])
 		| Commutative -> ":commutative",("Declares an abstract operator as commutative",[UsedOn TAbstractField])
 		| CompilerGenerated -> ":compilerGenerated",("Marks a field as generated by the compiler. Shouldn't be used by the end user",[Platforms [Java;Cs]])
+		| Const -> ":const",("Allows a type parameter to accept expression values",[UsedOn TTypeParameter])
 		| CoreApi -> ":coreApi",("Identifies this class as a core api class (forces Api check)",[UsedOnEither [TClass;TEnum;TTypedef;TAbstract]])
 		| CoreType -> ":coreType",("Identifies an abstract as core type so that it requires no implementation",[UsedOn TAbstract])
 		| CppFileCode -> ":cppFileCode",("Code to be injected into generated cpp file",[Platform Cpp])
@@ -387,7 +395,7 @@ module MetaInfo = struct
 		| Deprecated -> ":deprecated",("Automatically added by -java-lib on class fields annotated with @Deprecated annotation. Has no effect on types compiled by Haxe",[Platform Java; UsedOnEither [TClass;TEnum;TClassField]])
 		| DirectlyUsed -> ":directlyUsed",("Marks types that are directly referenced by non-extern code",[Internal])
 		| DynamicObject -> ":dynamicObject",("Used internally to identify the Dynamic Object implementation",[Platforms [Java;Cs]; UsedOn TClass; Internal])
-		| Enum -> ":enum",("Used internally to annotate a class that was generated from an enum",[Platforms [Java;Cs]; UsedOn TClass; Internal])
+		| Enum -> ":enum",("Defines finite value sets to abstract definitions",[UsedOn TAbstract])
 		| EnumConstructorParam -> ":enumConstructorParam",("Used internally to annotate GADT type parameters",[UsedOn TClass; Internal])
 		| Event -> ":event",("Automatically added by -net-lib on events. Has no effect on types compiled by Haxe",[Platform Cs; UsedOn TClassField])
 		| Exhaustive -> ":exhaustive",("",[Internal])
@@ -400,7 +408,7 @@ module MetaInfo = struct
 		| Font -> ":font",("Embeds the given TrueType font into the class (must extend flash.text.Font)",[HasParam "TTF path";HasParam "Range String";UsedOn TClass])
 		| Forward -> ":forward",("Forwards field access to underlying type",[HasParam "List of field names";UsedOn TAbstract])
 		| From -> ":from",("Specifies that the field of the abstract is a cast operation from the type identified in the function",[UsedOn TAbstractField])
-		| FunctionCode -> ":functionCode",("",[Platform Cpp])
+		| FunctionCode -> ":functionCode",("Used to inject platform-native code into a function",[Platforms [Cpp;Java;Cs]])
 		| FunctionTailCode -> ":functionTailCode",("",[Platform Cpp])
 		| Generic -> ":generic",("Marks a class or class field as generic so each type parameter combination generates its own type/field",[UsedOnEither [TClass;TClassField]])
 		| GenericBuild -> ":genericBuild",("Builds instances of a type using the specified macro",[UsedOn TClass])
@@ -451,6 +459,7 @@ module MetaInfo = struct
 		| NotNull -> ":notNull",("Declares an abstract type as not accepting null values",[UsedOn TAbstract])
 		| NoUsing -> ":noUsing",("Prevents a field from being used with 'using'",[UsedOn TClassField])
 		| Ns -> ":ns",("Internally used by the Swf generator to handle namespaces",[Platform Flash])
+		| Objc -> ":objc",("Declares a class or interface that is used to interoperate with Objective-C code",[Platform Cpp;UsedOn TClass])
 		| Op -> ":op",("Declares an abstract field as being an operator overload",[HasParam "The operation";UsedOn TAbstractField])
 		| Optional -> ":optional",("Marks the field of a structure as optional",[UsedOn TClassField])
 		| Overload -> ":overload",("Allows the field to be called with different argument types",[HasParam "Function specification (no expression)";UsedOn TClassField])
@@ -465,7 +474,7 @@ module MetaInfo = struct
 		| Remove -> ":remove",("Causes an interface to be removed from all implementing classes before generation",[UsedOn TClass])
 		| Require -> ":require",("Allows access to a field only if the specified compiler flag is set",[HasParam "Compiler flag to check";UsedOn TClassField])
 		| RequiresAssign -> ":requiresAssign",("Used internally to mark certain abstract operator overloads",[Internal])
-		(* | Resolve -> ":resolve",("Abstract fields marked with this metadata can be used to resolve unknown fields",[UsedOn TClassField]) *)
+		| Resolve -> ":resolve",("Abstract fields marked with this metadata can be used to resolve unknown fields",[UsedOn TClassField])
 		| ReplaceReflection -> ":replaceReflection",("Used internally to specify a function that should replace its internal __hx_functionName counterpart",[Platforms [Java;Cs]; UsedOnEither[TClass;TEnum]; Internal])
 		| Rtti -> ":rtti",("Adds runtime type informations",[UsedOn TClass])
 		| Runtime -> ":runtime",("?",[])
@@ -691,6 +700,11 @@ let memory_marker = [|Unix.time()|]
 
 let create v args =
 	let m = Type.mk_mono() in
+	let defines =
+		PMap.add "true" "1" (
+		PMap.add "source-header" "Generated by Haxe" (
+		if !display_default <> DMNone then PMap.add "display" "1" PMap.empty else PMap.empty))
+	in
 	{
 		version = v;
 		args = args;
@@ -707,7 +721,7 @@ let create v args =
 		std_path = [];
 		class_path = [];
 		main_class = None;
-		defines = PMap.add "true" "1" (if !display_default <> DMNone then PMap.add "display" "1" PMap.empty else PMap.empty);
+		defines = defines;
 		package_rules = PMap.empty;
 		file = "";
 		types = [];
@@ -726,6 +740,7 @@ let create v args =
 		net_path_map = Hashtbl.create 0;
 		c_args = [];
 		neko_libs = [];
+		include_files = [];
 		php_prefix = None;
 		js_gen = None;
 		load_extern_type = [];

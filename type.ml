@@ -1,23 +1,20 @@
 (*
- * Copyright (C)2005-2013 Haxe Foundation
- *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included in
- * all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+	The Haxe Compiler
+	Copyright (C) 2005-2015  Haxe Foundation
+
+	This program is free software; you can redistribute it and/or
+	modify it under the terms of the GNU General Public License
+	as published by the Free Software Foundation; either version 2
+	of the License, or (at your option) any later version.
+
+	This program is distributed in the hope that it will be useful,
+	but WITHOUT ANY WARRANTY; without even the implied warranty of
+	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+	GNU General Public License for more details.
+
+	You should have received a copy of the GNU General Public License
+	along with this program; if not, write to the Free Software
+	Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *)
 
 open Ast
@@ -263,6 +260,7 @@ and tabstract = {
 	mutable a_to : t list;
 	mutable a_to_field : (t * tclass_field) list;
 	mutable a_array : tclass_field list;
+	mutable a_resolve : tclass_field option;
 }
 
 and module_type =
@@ -439,6 +437,7 @@ let null_abstract = {
 	a_to = [];
 	a_to_field = [];
 	a_array = [];
+	a_resolve = None;
 }
 
 let add_dependency m mdep =
@@ -487,7 +486,7 @@ let map loop t =
 				a.a_fields <- fields;
 				t
 			| _ ->
-	 			TAnon {
+				TAnon {
 					a_fields = fields;
 					a_status = a.a_status;
 				}
@@ -557,7 +556,7 @@ let apply_params cparams params t =
 					a.a_fields <- fields;
 					t
 				| _ ->
-		 			TAnon {
+					TAnon {
 						a_fields = fields;
 						a_status = a.a_status;
 					}
@@ -674,6 +673,28 @@ let type_of_module_type = function
 	| TEnumDecl e -> TEnum (e,List.map snd e.e_params)
 	| TTypeDecl t -> TType (t,List.map snd t.t_params)
 	| TAbstractDecl a -> TAbstract (a,List.map snd a.a_params)
+
+let rec module_type_of_type = function
+	| TInst(c,_) -> TClassDecl c
+	| TEnum(en,_) -> TEnumDecl en
+	| TType(t,_) -> TTypeDecl t
+	| TAbstract(a,_) -> TAbstractDecl a
+	| TLazy f -> module_type_of_type (!f())
+	| TMono r ->
+		(match !r with
+		| Some t -> module_type_of_type t
+		| _ -> raise Exit)
+	| _ ->
+		raise Exit
+
+let tconst_to_const = function
+	| TInt i -> Int (Int32.to_string i)
+	| TFloat s -> Float s
+	| TString s -> String s
+	| TBool b -> Ident (if b then "true" else "false")
+	| TNull -> Ident "null"
+	| TThis -> Ident "this"
+	| TSuper -> Ident "super"
 
 (* ======= Field utility ======= *)
 
@@ -1227,6 +1248,11 @@ let rec link e a b =
 		true
 	end
 
+let link_dynamic a b = match follow a,follow b with
+	| TMono r,TDynamic _ -> r := Some b
+	| TDynamic _,TMono r -> r := Some a
+	| _ -> ()
+
 let rec fast_eq a b =
 	if a == b then
 		true
@@ -1322,8 +1348,8 @@ let unify_kind k1 k2 =
 			| MethDynamic -> direct_access v.v_read && direct_access v.v_write
 			| MethMacro -> false
 			| MethNormal | MethInline ->
-				match v.v_write with
-				| AccNo | AccNever -> true
+				match v.v_read,v.v_write with
+				| AccNormal,(AccNo | AccNever) -> true
 				| _ -> false)
 		| Method m1, Method m2 ->
 			match m1,m2 with
@@ -1436,6 +1462,13 @@ let type_iseq a b =
 	with
 		Unify_error _ -> false
 
+let type_iseq_strict a b =
+	try
+		type_eq EqDoNotFollowNull a b;
+		true
+	with Unify_error _ ->
+		false
+
 let unify_stack = ref []
 let abstract_cast_stack = ref []
 let unify_new_monos = ref []
@@ -1508,7 +1541,12 @@ let rec unify a b =
 				loop cs (List.map (apply_params c.cl_params tl) tls)
 			) c.cl_implements
 			|| (match c.cl_kind with
-			| KTypeParameter pl -> List.exists (fun t -> match follow t with TInst (cs,tls) -> loop cs (List.map (apply_params c.cl_params tl) tls) | _ -> false) pl
+			| KTypeParameter pl -> List.exists (fun t ->
+				match follow t with
+				| TInst (cs,tls) -> loop cs (List.map (apply_params c.cl_params tl) tls)
+				| TAbstract(aa,tl) -> List.exists (unify_to aa tl b) aa.a_to
+				| _ -> false
+			) pl
 			| _ -> false)
 		in
 		if not (loop c1 tl1) then error [cannot_unify a b]
@@ -1865,11 +1903,12 @@ module Abstract = struct
 
 	let rec get_underlying_type a pl =
 		let maybe_recurse t =
-			underlying_type_stack := a :: !underlying_type_stack;
+			underlying_type_stack := (TAbstract(a,pl)) :: !underlying_type_stack;
 			let t = match follow t with
 				| TAbstract(a,tl) when not (Meta.has Meta.CoreType a.a_meta) ->
-					if List.mem a !underlying_type_stack then begin
-						let s = String.concat " -> " (List.map (fun a -> s_type_path a.a_path) (List.rev (a :: !underlying_type_stack))) in
+					if List.exists (fast_eq t) !underlying_type_stack then begin
+						let pctx = print_context() in
+						let s = String.concat " -> " (List.map (fun t -> s_type pctx t) (List.rev (t :: !underlying_type_stack))) in
 						raise (Error("Abstract chain detected: " ^ s,a.a_pos))
 					end;
 					get_underlying_type a tl
@@ -2110,6 +2149,145 @@ let map_expr_type f ft fv e =
 		{ e with eexpr = TCast (f e1,t); etype = ft e.etype }
 	| TMeta (m,e1) ->
 		{e with eexpr = TMeta(m, f e1); etype = ft e.etype }
+
+module TExprToExpr = struct
+	let tpath p mp pl =
+		if snd mp = snd p then
+			CTPath {
+				tpackage = fst p;
+				tname = snd p;
+				tparams = List.map (fun t -> TPType t) pl;
+				tsub = None;
+			}
+		else CTPath {
+				tpackage = fst mp;
+				tname = snd mp;
+				tparams = List.map (fun t -> TPType t) pl;
+				tsub = Some (snd p);
+			}
+
+	let rec convert_type = function
+		| TMono r ->
+			(match !r with
+			| None -> raise Exit
+			| Some t -> convert_type t)
+		| TInst ({cl_private = true; cl_path=_,name},tl)
+		| TEnum ({e_private = true; e_path=_,name},tl)
+		| TType ({t_private = true; t_path=_,name},tl)
+		| TAbstract ({a_private = true; a_path=_,name},tl) ->
+			CTPath {
+				tpackage = [];
+				tname = name;
+				tparams = List.map (fun t -> TPType (convert_type t)) tl;
+				tsub = None;
+			}
+		| TEnum (e,pl) ->
+			tpath e.e_path e.e_module.m_path (List.map convert_type pl)
+		| TInst({cl_kind = KTypeParameter _} as c,pl) ->
+			tpath ([],snd c.cl_path) ([],snd c.cl_path) (List.map convert_type pl)
+		| TInst (c,pl) ->
+			tpath c.cl_path c.cl_module.m_path (List.map convert_type pl)
+		| TType (t,pl) as tf ->
+			(* recurse on type-type *)
+			if (snd t.t_path).[0] = '#' then convert_type (follow tf) else tpath t.t_path t.t_module.m_path (List.map convert_type pl)
+		| TAbstract (a,pl) ->
+			tpath a.a_path a.a_module.m_path (List.map convert_type pl)
+		| TFun (args,ret) ->
+			CTFunction (List.map (fun (_,_,t) -> convert_type t) args, convert_type ret)
+		| TAnon a ->
+			begin match !(a.a_status) with
+			| Statics c -> tpath ([],"Class") ([],"Class") [tpath c.cl_path c.cl_path []]
+			| EnumStatics e -> tpath ([],"Enum") ([],"Enum") [tpath e.e_path e.e_path []]
+			| _ ->
+				CTAnonymous (PMap.foldi (fun _ f acc ->
+					{
+						cff_name = f.cf_name;
+						cff_kind = FVar (mk_ot f.cf_type,None);
+						cff_pos = f.cf_pos;
+						cff_doc = f.cf_doc;
+						cff_meta = f.cf_meta;
+						cff_access = [];
+					} :: acc
+				) a.a_fields [])
+			end
+		| (TDynamic t2) as t ->
+			tpath ([],"Dynamic") ([],"Dynamic") (if t == t_dynamic then [] else [convert_type t2])
+		| TLazy f ->
+			convert_type ((!f)())
+
+	and mk_ot t =
+		match follow t with
+		| TMono _ -> None
+		| _ -> (try Some (convert_type t) with Exit -> None)
+
+	let rec convert_expr e =
+		let full_type_path t =
+			let mp,p = match t with
+			| TClassDecl c -> c.cl_module.m_path,c.cl_path
+			| TEnumDecl en -> en.e_module.m_path,en.e_path
+			| TAbstractDecl a -> a.a_module.m_path,a.a_path
+			| TTypeDecl t -> t.t_module.m_path,t.t_path
+			in
+			if snd mp = snd p then p else (fst mp) @ [snd mp],snd p
+		in
+		let mk_path = expr_of_type_path in
+		let mk_ident = function
+			| "`trace" -> Ident "trace"
+			| n -> Ident n
+		in
+		let eopt = function None -> None | Some e -> Some (convert_expr e) in
+		((match e.eexpr with
+		| TConst c ->
+			EConst (tconst_to_const c)
+		| TLocal v -> EConst (mk_ident v.v_name)
+		| TArray (e1,e2) -> EArray (convert_expr e1,convert_expr e2)
+		| TBinop (op,e1,e2) -> EBinop (op, convert_expr e1, convert_expr e2)
+		| TField (e,f) -> EField (convert_expr e, field_name f)
+		| TTypeExpr t -> fst (mk_path (full_type_path t) e.epos)
+		| TParenthesis e -> EParenthesis (convert_expr e)
+		| TObjectDecl fl -> EObjectDecl (List.map (fun (f,e) -> f, convert_expr e) fl)
+		| TArrayDecl el -> EArrayDecl (List.map convert_expr el)
+		| TCall (e,el) -> ECall (convert_expr e,List.map convert_expr el)
+		| TNew (c,pl,el) -> ENew ((match (try convert_type (TInst (c,pl)) with Exit -> convert_type (TInst (c,[]))) with CTPath p -> p | _ -> assert false),List.map convert_expr el)
+		| TUnop (op,p,e) -> EUnop (op,p,convert_expr e)
+		| TFunction f ->
+			let arg (v,c) = v.v_name, false, mk_ot v.v_type, (match c with None -> None | Some c -> Some (EConst (tconst_to_const c),e.epos)) in
+			EFunction (None,{ f_params = []; f_args = List.map arg f.tf_args; f_type = mk_ot f.tf_type; f_expr = Some (convert_expr f.tf_expr) })
+		| TVar (v,eo) ->
+			EVars ([v.v_name, mk_ot v.v_type, eopt eo])
+		| TBlock el -> EBlock (List.map convert_expr el)
+		| TFor (v,it,e) ->
+			let ein = (EIn ((EConst (Ident v.v_name),it.epos),convert_expr it),it.epos) in
+			EFor (ein,convert_expr e)
+		| TIf (e,e1,e2) -> EIf (convert_expr e,convert_expr e1,eopt e2)
+		| TWhile (e1,e2,flag) -> EWhile (convert_expr e1, convert_expr e2, flag)
+		| TSwitch (e,cases,def) ->
+			let cases = List.map (fun (vl,e) ->
+				List.map convert_expr vl,None,(match e.eexpr with TBlock [] -> None | _ -> Some (convert_expr e))
+			) cases in
+			let def = match eopt def with None -> None | Some (EBlock [],_) -> Some None | e -> Some e in
+			ESwitch (convert_expr e,cases,def)
+		| TEnumParameter _ ->
+			(* these are considered complex, so the AST is handled in TMeta(Meta.Ast) *)
+			assert false
+		| TTry (e,catches) -> ETry (convert_expr e,List.map (fun (v,e) -> v.v_name, (try convert_type v.v_type with Exit -> assert false), convert_expr e) catches)
+		| TReturn e -> EReturn (eopt e)
+		| TBreak -> EBreak
+		| TContinue -> EContinue
+		| TThrow e -> EThrow (convert_expr e)
+		| TCast (e,t) ->
+			let t = (match t with
+				| None -> None
+				| Some t ->
+					let t = (match t with TClassDecl c -> TInst (c,[]) | TEnumDecl e -> TEnum (e,[]) | TTypeDecl t -> TType (t,[]) | TAbstractDecl a -> TAbstract (a,[])) in
+					Some (try convert_type t with Exit -> assert false)
+			) in
+			ECast (convert_expr e,t)
+		| TMeta ((Meta.Ast,[e1,_],_),_) -> e1
+		| TMeta (m,e) -> EMeta(m,convert_expr e))
+		,e.epos)
+
+end
 
 let print_if b e =
 	if b then print_endline (s_expr_pretty "" (s_type (print_context())) e)

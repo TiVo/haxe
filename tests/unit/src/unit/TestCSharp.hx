@@ -24,6 +24,14 @@ class TestCSharp extends Test
 {
 #if cs
 
+	function testIssue4325()
+	{
+		var b = new Base();
+		eq(b.Issue4325, 0);
+		b.setIssue4325(10);
+		eq(b.Issue4325, 10);
+	}
+
 	// -net-lib tests
 	function testHaxeKeywords()
 	{
@@ -37,7 +45,7 @@ class TestCSharp extends Test
 
 	function testIssue3474()
 	{
-		var a:IEditableTextBuffer = null;
+		var a:IEditableTextBuffer = cast null;
 		eq(a,null);
 		var didRun = false;
 		try
@@ -248,7 +256,7 @@ class TestCSharp extends Test
 		t(run);
 
 		//var dyn:Dynamic = v;
-		//t(Std.is(dyn, haxe.test.VoidVoid));
+		//t((dyn is haxe.test.VoidVoid));
 	}
 
 	var didRun = false;

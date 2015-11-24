@@ -1,23 +1,20 @@
 (*
- * Copyright (C)2005-2013 Haxe Foundation
- *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included in
- * all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+	The Haxe Compiler
+	Copyright (C) 2005-2015  Haxe Foundation
+
+	This program is free software; you can redistribute it and/or
+	modify it under the terms of the GNU General Public License
+	as published by the Free Software Foundation; either version 2
+	of the License, or (at your option) any later version.
+
+	This program is distributed in the hope that it will be useful,
+	but WITHOUT ANY WARRANTY; without even the implied warranty of
+	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+	GNU General Public License for more details.
+
+	You should have received a copy of the GNU General Public License
+	along with this program; if not, write to the Free Software
+	Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *)
 
 (*
@@ -70,7 +67,7 @@ exception Abort
 exception Completion of string
 
 
-let version = 3200
+let version = 3300
 let version_major = version / 1000
 let version_minor = (version mod 1000) / 100
 let version_revision = (version mod 100)
@@ -225,10 +222,6 @@ let make_path f =
 		| [] ->
 			error "empty part"
 		| [x] ->
-			if String.length x = 0 then
-				error "empty part"
-			else if not (x.[0] = '_' || (x.[0] >= 'A' && x.[0] <= 'Z')) then
-				error "Class name must start with uppercase character";
 			invalid_char x;
 			[],x
 		| x :: l ->
@@ -241,6 +234,20 @@ let make_path f =
 			x :: path,name
 	in
 	loop cl
+
+let starts_uppercase x =
+	x.[0] = '_' || (x.[0] >= 'A' && x.[0] <= 'Z')
+
+let check_uppercase x =
+	if String.length x = 0 then
+		failwith "empty part"
+	else if not (starts_uppercase x) then
+		failwith "Class name must start with uppercase character"
+
+let make_type_path f =
+	let pack,name = make_path f in
+	check_uppercase name;
+	pack,name
 
 let unique l =
 	let rec _unique = function
@@ -380,7 +387,7 @@ let lookup_classes com spath =
 			if clen < String.length spath && String.sub spath 0 clen = c then begin
 				let path = String.sub spath clen (String.length spath - clen) in
 				(try
-					let path = make_path path in
+					let path = make_type_path path in
 					(match loop l with
 					| [x] when String.length (Ast.s_type_path x) < String.length (Ast.s_type_path path) -> [x]
 					| _ -> [path])
@@ -789,7 +796,7 @@ and wait_loop boot_com host port =
 				(match m0.m_extra.m_kind, m.m_extra.m_kind with
 				| MCode, MMacro | MMacro, MCode ->
 					(* this was just a dependency to check : do not add to the context *)
-					()
+					PMap.iter (Hashtbl.replace com2.resources) m.m_extra.m_binded_res;
 				| _ ->
 					if verbose then print_endline ("Reusing  cached module " ^ Ast.s_type_path m.m_path);
 					m.m_extra.m_added <- !compilation_step;
@@ -810,7 +817,7 @@ and wait_loop boot_com host port =
 						| _ -> ()
 					) m.m_types;
 					if m.m_extra.m_kind <> MSub then Typeload.add_module ctx m p;
-					PMap.iter (Hashtbl.add com2.resources) m.m_extra.m_binded_res;
+					PMap.iter (Hashtbl.replace com2.resources) m.m_extra.m_binded_res;
 					PMap.iter (fun _ m2 -> add_modules m0 m2) m.m_extra.m_deps);
 					List.iter (Typer.call_init_macro ctx) m.m_extra.m_macro_calls
 			end
@@ -978,7 +985,7 @@ and do_connect host port args =
 
 and init ctx =
 	let usage = Printf.sprintf
-		"Haxe Compiler %s - (C)2005-2015 Haxe Foundation\n Usage : haxe%s -main <class> [-swf|-js|-neko|-php|-cpp|-as3] <output> [options]\n Options :"
+		"Haxe Compiler %s - (C)2005-2015 Haxe Foundation\n Usage : haxe%s -main <class> [-swf|-js|-neko|-php|-cpp|-as3|-cs|-java|-python] <output> [options]\n Options :"
 		s_version (if Sys.os_type = "Win32" then ".exe" else "")
 	in
 	let com = ctx.com in
@@ -1082,7 +1089,7 @@ try
 		),"<file> : generate XML types description");
 		("-main",Arg.String (fun cl ->
 			if com.main_class <> None then raise (Arg.Bad "Multiple -main");
-			let cpath = make_path cl in
+			let cpath = make_type_path cl in
 			com.main_class <- Some cpath;
 			classes := cpath :: !classes
 		),"<class> : select startup class");
@@ -1097,7 +1104,7 @@ try
 				| _ -> 	if List.mem var reserved_flags then raise (Arg.Bad (var ^ " is a reserved compiler flag and cannot be defined from command line"));
 			end;
 			Common.raw_define com var;
-		),"<var> : define a conditional compilation flag");
+		),"<var[=value]> : define a conditional compilation flag");
 		("-v",Arg.Unit (fun () ->
 			com.verbose <- true
 		),": turn on verbose mode");
@@ -1112,7 +1119,7 @@ try
 			| "std" | "full" | "no" -> ()
 			| _ -> raise (Arg.Bad "Invalid DCE mode, expected std | full | no"));
 			Common.define_value com Define.Dce mode
-		),"[std|full|no] : set the dead code elimination mode");
+		),"[std|full|no] : set the dead code elimination mode (default std)");
 		("-swf-version",Arg.Float (fun v ->
 			if not !swf_version || com.flash_version < v then com.flash_version <- v;
 			swf_version := true;
@@ -1160,7 +1167,7 @@ try
 			let neko_file = file ^ ".n" in
 			set_platform Neko neko_file;
 			if com.main_class = None then begin
-				let cpath = make_path file in
+				let cpath = make_type_path file in
 				com.main_class <- Some cpath;
 				classes := cpath :: !classes
 			end;
@@ -1290,7 +1297,6 @@ try
 		("--interp", Arg.Unit (fun() ->
 			Common.define com Define.Interp;
 			set_platform Neko "";
-			no_output := true;
 			interp := true;
 		),": interpret the program using internal macro system");
 		("--macro", Arg.String (fun e ->
@@ -1370,7 +1376,15 @@ try
 			did_something := true
 		),": print help for all compiler metadatas");
 	] in
-	let args_callback cl = classes := make_path cl :: !classes in
+	let args_callback cl =
+		let path,name = make_path cl in
+		if starts_uppercase name then
+			classes := (path,name) :: !classes
+		else begin
+			force_typing := true;
+			config_macros := (Printf.sprintf "include('%s')" cl) :: !config_macros;
+		end
+	in
 	let all_args_spec = basic_args_spec @ adv_args_spec in
 	let process args =
 		let current = ref 0 in
@@ -1433,6 +1447,8 @@ try
 			add_std "neko";
 			"n"
 		| Js ->
+			if not (PMap.exists (fst (Define.infos Define.JqueryVer)) com.defines) then
+				Common.define_value com Define.JqueryVer "11103";
 			add_std "js";
 			"js"
 		| Php ->
@@ -1484,7 +1500,7 @@ try
 	end else begin
 		ctx.setup();
 		Common.log com ("Classpath : " ^ (String.concat ";" com.class_path));
-		Common.log com ("Defines : " ^ (String.concat ";" (PMap.foldi (fun v _ acc -> v :: acc) com.defines [])));
+		Common.log com ("Defines : " ^ (String.concat ";" (PMap.foldi (fun k v acc -> (match v with "1" -> k | _ -> k ^ "=" ^ v) :: acc) com.defines [])));
 		let t = Common.timer "typing" in
 		Typecore.type_expr_ref := (fun ctx e with_type -> Typer.type_expr ctx e with_type);
 		let tctx = Typer.create com in
@@ -1529,45 +1545,44 @@ try
 			| Cpp | Cs | Java | Php -> Common.mkdir_from_path (com.file ^ "/.")
 			| _ -> Common.mkdir_from_path com.file
 		end;
-		(match com.platform with
-		| _ when !no_output ->
+		if not !no_output then begin
 			if !interp then begin
 				let ctx = Interp.create com (Typer.make_macro_api tctx Ast.null_pos) in
 				Interp.add_types ctx com.types (fun t -> ());
 				(match com.main with
 				| None -> ()
 				| Some e -> ignore(Interp.eval_expr ctx e));
-			end;
-		| Cross ->
-			()
-		| Flash when Common.defined com Define.As3 ->
-			Common.log com ("Generating AS3 in : " ^ com.file);
-			Genas3.generate com;
-		| Flash ->
-			Common.log com ("Generating swf : " ^ com.file);
-			Genswf.generate com !swf_header;
-		| Neko ->
-			Common.log com ("Generating neko : " ^ com.file);
-			Genneko.generate com;
-		| Js ->
-			Common.log com ("Generating js : " ^ com.file);
-			Genjs.generate com
-		| Php ->
-			Common.log com ("Generating PHP in : " ^ com.file);
-			Genphp.generate com;
-		| Cpp ->
-			Common.log com ("Generating Cpp in : " ^ com.file);
-			Gencpp.generate com;
-		| Cs ->
-			Common.log com ("Generating Cs in : " ^ com.file);
-			Gencs.generate com;
-		| Java ->
-			Common.log com ("Generating Java in : " ^ com.file);
-			Genjava.generate com;
-		| Python ->
-			Common.log com ("Generating python in : " ^ com.file);
-			Genpy.generate com;
-		);
+			end else if com.platform = Cross then
+				()
+			else begin
+				let generate,name = match com.platform with
+				| Flash when Common.defined com Define.As3 ->
+					Genas3.generate,"AS3"
+				| Flash ->
+					Genswf.generate !swf_header,"swf"
+				| Neko ->
+					Genneko.generate,"neko"
+				| Js ->
+					Genjs.generate,"js"
+				| Php ->
+					Genphp.generate,"php"
+				| Cpp ->
+					Gencpp.generate,"cpp"
+				| Cs ->
+					Gencs.generate,"cs"
+				| Java ->
+					Genjava.generate,"java"
+				| Python ->
+					Genpy.generate,"python"
+				| Cross ->
+					assert false
+				in
+				Common.log com ("Generating " ^ name ^ ": " ^ com.file);
+				let t = Common.timer ("generate " ^ name) in
+				generate com;
+				t()
+			end
+		end
 	end;
 	Sys.catch_break false;
 	List.iter (fun f -> f()) (List.rev com.final_filters);

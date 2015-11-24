@@ -677,7 +677,7 @@ class TestAnalyzer extends TestBase {
 		var b = B(0);
 		switch (b) {
 			case B(i):
-				assertEqualsConst(0, i);
+				assertEquals(0, i);
 			case A(_):
 		}
 	}
@@ -692,6 +692,39 @@ class TestAnalyzer extends TestBase {
         var r2 = 2 * v2;
 		assertEqualsConst(2., r2.x);
 		assertEqualsConst(4., r2.y);
+	}
+
+	function testApiInline() {
+		var i = 65;
+		var f = 3.5;
+		var s = "foo";
+		var bTrue = true;
+		var bFalse = false;
+		var eBreak = haxe.macro.Expr.ExprDef.EBreak;
+
+		var floor = Math.floor(f);
+		assertEqualsConst(3, floor);
+
+		var ceil = Math.ceil(f);
+		assertEqualsConst(4, ceil);
+
+		var int = Std.int(f);
+		assertEqualsConst(3, int);
+
+		var string = Std.string(s);
+		assertEqualsConst("foo", string);
+
+		var string = Std.string(bTrue);
+		assertEqualsConst("true", string);
+
+		var string = Std.string(bFalse);
+		assertEqualsConst("false", string);
+
+		var fromCharCode = String.fromCharCode(i);
+		assertEqualsConst("A", fromCharCode);
+
+		var enumIndex = Type.enumIndex(eBreak);
+		assertEqualsConst(20, enumIndex);
 	}
 
 	function cond1() {

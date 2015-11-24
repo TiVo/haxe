@@ -63,12 +63,34 @@ class TestInt64 extends Test {
 		a.toInt();
 	}
 
-	public function testCopy() {
-		var a : Int64, b : Int64;
-		a = 1;
-		b = a.copy();
-		++b;
-		f( a == b );
+	public function testIncrement() {
+		var a : Int64, b : Int64, c : Int64;
+
+		// Int64 should act as a value type and be immutable.
+		// Increment ops should swap `this` to a new Int64 object.
+		a = 0; b = a;
+		a++;
+		f(a == b);
+
+		a = 0; b = a;
+		++a;
+		f(a == b);
+
+		a = 0; b = a;
+		a--;
+		f(a == b);
+
+		a = 0; b = a;
+		--a;
+		f(a == b);
+
+		a = Int64.make(0,0xFFFFFFFF);
+		b = a;
+		c = Int64.make(1,0);
+		int64eq( a++, b );
+		int64eq( a--, c );
+		int64eq( ++a, c );
+		int64eq( --a, b );
 	}
 
 	public function testToString() {
@@ -89,6 +111,16 @@ class TestInt64 extends Test {
 
 		a = Int64.make(1,1);
 		eq( a.toStr(), "4294967297" );
+
+		// set a to 2^63 (overflows to the smallest negative number)
+		a = Int64.ofInt(2);
+		for (i in 0...62) {
+			a = Int64.mul(a, 2);
+		}
+
+		eq( Int64.add(a, -1).toStr(), "9223372036854775807" ); // largest positive
+		eq( Int64.add(a, 1).toStr(), "-9223372036854775807" ); // smallest negative - 1
+		eq( a.toStr(), "-9223372036854775808" ); // smallest negative
 	}
 
 	public function testComparison() {
@@ -137,16 +169,6 @@ class TestInt64 extends Test {
 		t( a.ucompare(b) < 0 );
 
 
-	}
-
-	public function testIncrement() {
-		var a = Int64.make(0,0xFFFFFFFF);
-		var b = a.copy();
-		var c = Int64.make(1,0);
-		int64eq( a++, b );
-		int64eq( a--, c );
-		int64eq( ++a, c );
-		int64eq( --a, b );
 	}
 
 	public function testAddition() {
@@ -427,6 +449,106 @@ class TestInt64 extends Test {
 		if( v != v2 ) {
 			Test.report(Std.string(v)+" should be "+Std.string(v2),pos);
 			Test.success = false;
+		}
+	}
+
+	public function testParseString()
+	{
+		for (v in ["0", "1", "-1", "9223372036854775807", "-9223372036854775807"]) {
+			eq(Std.string(parseString(v)), v);
+		}
+
+		// trims the string:
+		eq("-23", Std.string(parseString("  -23 ")));
+
+
+		// overflow and underflow raise exceptions:
+		try
+		{
+			parseString("9223372036854775808");
+			f(true);
+		}
+		catch (e:Dynamic)
+		{
+			// fine
+		}
+
+		try
+		{
+			parseString("-9223372036854775809");
+			f(true);
+		}
+		catch (e:Dynamic)
+		{
+			// fine
+		}
+
+		try
+		{
+			parseString("--1");
+			f(true);
+		}
+		catch (e:Dynamic)
+		{
+			// fine
+		}
+
+		try
+		{
+			parseString("asd1");
+			f(true);
+		}
+		catch (e:Dynamic)
+		{
+			// fine
+		}
+
+		try
+		{
+			parseString("1asdf");
+			f(true);
+		}
+		catch (e:Dynamic)
+		{
+			// fine
+		}
+	}
+
+	public function testFromFloat()
+	{
+		for (v in [0.0, 1.0, -1.0, 9007199254740991, -9007199254740991]) {
+			eq(Std.parseFloat(Std.string(fromFloat(v))), v);
+		}
+
+		try
+		{
+			fromFloat(9007199254740992);
+			f(true);
+		}
+		catch (e:Dynamic)
+		{
+			// fine
+		}
+
+		try
+		{
+			fromFloat(-9007199254740992);
+			f(true);
+		}
+		catch (e:Dynamic)
+		{
+			// fine
+		}
+
+		var nan = Math.NaN;
+		try
+		{
+			fromFloat(nan);
+			f(true);
+		}
+		catch (e:Dynamic)
+		{
+			// fine
 		}
 	}
 }

@@ -1,23 +1,20 @@
 (*
- * Copyright (C)2005-2013 Haxe Foundation
- *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included in
- * all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+	The Haxe Compiler
+	Copyright (C) 2005-2015  Haxe Foundation
+
+	This program is free software; you can redistribute it and/or
+	modify it under the terms of the GNU General Public License
+	as published by the Free Software Foundation; either version 2
+	of the License, or (at your option) any later version.
+
+	This program is distributed in the hope that it will be useful,
+	but WITHOUT ANY WARRANTY; without even the implied warranty of
+	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+	GNU General Public License for more details.
+
+	You should have received a copy of the GNU General Public License
+	along with this program; if not, write to the Free Software
+	Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *)
 
 open Ast
@@ -44,6 +41,11 @@ let has_side_effect e =
 	with Exit ->
 		true
 
+let rec is_exhaustive e1 = match e1.eexpr with
+	| TMeta((Meta.Exhaustive,_,_),_) -> true
+	| TMeta(_, e1) | TParenthesis e1 -> is_exhaustive e1
+	| _ -> false
+
 let mk_untyped_call name p params =
 	{
 		eexpr = TCall({ eexpr = TLocal(alloc_unbound_var name t_dynamic); etype = t_dynamic; epos = p }, params);
@@ -51,50 +53,50 @@ let mk_untyped_call name p params =
 		epos = p;
 	}
 
-let api_inline ctx c field params p =
+let api_inline2 com c field params p =
 	match c.cl_path, field, params with
-	| ([],"Type"),"enumIndex",[{ eexpr = TField (_,FEnum (en,f)) }] -> (match ctx.com.platform with
+	| ([],"Type"),"enumIndex",[{ eexpr = TField (_,FEnum (en,f)) }] -> (match com.platform with
 		| Cs when en.e_extern && not (Meta.has Meta.HxGen en.e_meta) ->
 			(* We don't want to optimize enums from external sources; as they might change unexpectedly *)
 			(* and since native C# enums don't have the concept of index - they have rather a value, *)
 			(* which can't be mapped to a native API - this kind of substitution is dangerous *)
 			None
 		| _ ->
-			Some (mk (TConst (TInt (Int32.of_int f.ef_index))) ctx.t.tint p))
+			Some (mk (TConst (TInt (Int32.of_int f.ef_index))) com.basic.tint p))
 	| ([],"Type"),"enumIndex",[{ eexpr = TCall({ eexpr = TField (_,FEnum (en,f)) },pl) }] when List.for_all (fun e -> not (has_side_effect e)) pl ->
-		(match ctx.com.platform with
+		(match com.platform with
 			| Cs when en.e_extern && not (Meta.has Meta.HxGen en.e_meta) ->
 				(* see comment above *)
 				None
 			| _ ->
-				Some (mk (TConst (TInt (Int32.of_int f.ef_index))) ctx.t.tint p))
+				Some (mk (TConst (TInt (Int32.of_int f.ef_index))) com.basic.tint p))
 	| ([],"Std"),"int",[{ eexpr = TConst (TInt _) } as e] ->
 		Some { e with epos = p }
 	| ([],"String"),"fromCharCode",[{ eexpr = TConst (TInt i) }] when i > 0l && i < 128l ->
-		Some (mk (TConst (TString (String.make 1 (char_of_int (Int32.to_int i))))) ctx.t.tstring p)
+		Some (mk (TConst (TString (String.make 1 (char_of_int (Int32.to_int i))))) com.basic.tstring p)
 	| ([],"Std"),"string",[{ eexpr = TConst c } as e] ->
 		(match c with
 		| TString s ->
 			Some { e with epos = p }
 		| TInt i ->
-			Some { eexpr = TConst (TString (Int32.to_string i)); epos = p; etype = ctx.t.tstring }
+			Some { eexpr = TConst (TString (Int32.to_string i)); epos = p; etype = com.basic.tstring }
 		| TBool b ->
-			Some { eexpr = TConst (TString (if b then "true" else "false")); epos = p; etype = ctx.t.tstring }
+			Some { eexpr = TConst (TString (if b then "true" else "false")); epos = p; etype = com.basic.tstring }
 		| _ ->
 			None)
 	| ([],"Std"),"string",[{ eexpr = TIf (_,{ eexpr = TConst (TString _)},Some { eexpr = TConst (TString _) }) } as e] ->
 		Some e
- 	| ([],"Std"),"string",[{ eexpr = TLocal _ | TField({ eexpr = TLocal _ },_) } as v] when ctx.com.platform = Js || ctx.com.platform = Flash ->
-		let pos = v.epos in
+ 	| ([],"Std"),"string",[{ eexpr = TLocal v | TField({ eexpr = TLocal v },_) } as ev] when (com.platform = Js || com.platform = Flash) && not (Meta.has Meta.CompilerGenerated v.v_meta) ->
+		let pos = ev.epos in
 		let stringv() =
-			let to_str = mk (TBinop (Ast.OpAdd, mk (TConst (TString "")) ctx.t.tstring pos, v)) ctx.t.tstring pos in
-			if ctx.com.platform = Js || is_nullable v.etype then
-				let chk_null = mk (TBinop (Ast.OpEq, v, mk (TConst TNull) t_dynamic pos)) ctx.t.tbool pos in
-				mk (TIf (chk_null, mk (TConst (TString "null")) ctx.t.tstring pos, Some to_str)) ctx.t.tstring pos
+			let to_str = mk (TBinop (Ast.OpAdd, mk (TConst (TString "")) com.basic.tstring pos, ev)) com.basic.tstring pos in
+			if com.platform = Js || is_nullable ev.etype then
+				let chk_null = mk (TBinop (Ast.OpEq, ev, mk (TConst TNull) t_dynamic pos)) com.basic.tbool pos in
+				mk (TIf (chk_null, mk (TConst (TString "null")) com.basic.tstring pos, Some to_str)) com.basic.tstring pos
 			else
 				to_str
 		in
-		(match follow v.etype with
+		(match follow ev.etype with
 		| TInst ({ cl_path = [],"String" }, []) ->
 			Some (stringv())
 		| TAbstract ({ a_path = [],"Float" }, []) ->
@@ -107,6 +109,43 @@ let api_inline ctx c field params p =
 			Some (stringv())
 		| _ ->
 			None)
+	| ([],"Std"),"int",[{ eexpr = TConst (TFloat f) }] ->
+		let f = float_of_string f in
+		(match classify_float f with
+		| FP_infinite | FP_nan ->
+			None
+		| _ when f <= Int32.to_float Int32.min_int -. 1. || f >= Int32.to_float Int32.max_int +. 1. ->
+			None (* out range, keep platform-specific behavior *)
+		| _ ->
+			Some { eexpr = TConst (TInt (Int32.of_float f)); etype = com.basic.tint; epos = p })
+	| ([],"Math"),"ceil",[{ eexpr = TConst (TFloat f) }] ->
+		let f = float_of_string f in
+		(match classify_float f with
+		| FP_infinite | FP_nan ->
+			None
+		| _ when f <= Int32.to_float Int32.min_int -. 1. || f >= Int32.to_float Int32.max_int ->
+			None (* out range, keep platform-specific behavior *)
+		| _ ->
+			Some { eexpr = TConst (TInt (Int32.of_float (ceil f))); etype = com.basic.tint; epos = p })
+	| ([],"Math"),"floor",[{ eexpr = TConst (TFloat f) }] ->
+		let f = float_of_string f in
+		(match classify_float f with
+		| FP_infinite | FP_nan ->
+			None
+		| _ when f <= Int32.to_float Int32.min_int || f >= Int32.to_float Int32.max_int +. 1. ->
+			None (* out range, keep platform-specific behavior *)
+		| _ ->
+			Some { eexpr = TConst (TInt (Int32.of_float (floor f))); etype = com.basic.tint; epos = p })
+	| (["cs"],"Lib"),("fixed" | "checked" | "unsafe"),[e] ->
+			Some (mk_untyped_call ("__" ^ field ^ "__") p [e])
+	| (["cs"],"Lib"),("lock"),[obj;block] ->
+			Some (mk_untyped_call ("__lock__") p [obj;mk_block block])
+	| (["java"],"Lib"),("lock"),[obj;block] ->
+			Some (mk_untyped_call ("__lock__") p [obj;mk_block block])
+	| _ ->
+		None
+
+let api_inline ctx c field params p = match c.cl_path, field, params with
 	| ([],"Std"),"is",[o;t] | (["js"],"Boot"),"__instanceof",[o;t] when ctx.com.platform = Js ->
 		let mk_local ctx n t pos =
 			mk (TLocal (try
@@ -153,21 +192,6 @@ let api_inline ctx c field params p =
 			Some (mk (TBinop (Ast.OpBoolAnd, iof, not_enum)) tbool p)
 		| _ ->
 			None)
-	| ([],"Std"),"int",[{ eexpr = TConst (TFloat f) }] ->
-		let f = float_of_string f in
-		(match classify_float f with
-		| FP_infinite | FP_nan ->
-			None
-		| _ when f <= Int32.to_float Int32.min_int -. 1. || f >= Int32.to_float Int32.max_int +. 1. ->
-			None (* out range, keep platform-specific behavior *)
-		| _ ->
-			Some { eexpr = TConst (TInt (Int32.of_float f)); etype = ctx.t.tint; epos = p })
-	| (["cs"],"Lib"),("fixed" | "checked" | "unsafe"),[e] ->
-			Some (mk_untyped_call ("__" ^ field ^ "__") p [e])
-	| (["cs"],"Lib"),("lock"),[obj;block] ->
-			Some (mk_untyped_call ("__lock__") p [obj;mk_block block])
-	| (["java"],"Lib"),("lock"),[obj;block] ->
-			Some (mk_untyped_call ("__lock__") p [obj;mk_block block])
 	| (["cs" | "java"],"Lib"),("nativeArray"),[{ eexpr = TArrayDecl args } as edecl; _]
 	| (["haxe";"ds";"_Vector"],"Vector_Impl_"),("fromArrayCopy"),[{ eexpr = TArrayDecl args } as edecl] -> (try
 			let platf = match ctx.com.platform with
@@ -194,7 +218,7 @@ let api_inline ctx c field params p =
 		with | Exit ->
 			None)
 	| _ ->
-		None
+		api_inline2 ctx.com c field params p
 
 (* ---------------------------------------------------------------------- *)
 (* INLINING *)
@@ -382,7 +406,7 @@ let rec type_inline ctx cf f ethis params tret config p ?(self_calling_closure=f
 			in_loop := old;
 			{ e with eexpr = TWhile (cond,eloop,flag) }
 		| TSwitch (e1,cases,def) when term ->
-			let term = term && def <> None in
+			let term = term && (def <> None || is_exhaustive e1) in
 			let cases = List.map (fun (el,e) ->
 				let el = List.map (map false) el in
 				el, map term e
@@ -398,10 +422,18 @@ let rec type_inline ctx cf f ethis params tret config p ?(self_calling_closure=f
 		| TBlock l ->
 			let old = save_locals ctx in
 			let t = ref e.etype in
-			let has_return e =
-				let rec loop e = match e.eexpr with
-					| TReturn _ -> raise Exit
-					| _ -> Type.iter loop e
+			let rec has_term_return e =
+				let rec loop e =
+					let r = match e.eexpr with
+					| TReturn _ -> true
+					| TIf (_,_,None) | TSwitch (_,_,None) | TFor _ | TWhile (_,_,NormalWhile) -> false (* we might not enter this code at all *)
+					| TTry (a, catches) -> List.for_all has_term_return (a :: List.map snd catches)
+					| TIf (cond,a,Some b) -> has_term_return cond || (has_term_return a && has_term_return b)
+					| TSwitch (cond,cases,Some def) -> has_term_return cond || List.for_all has_term_return (def :: List.map snd cases)
+					| TBinop (OpBoolAnd,a,b) -> has_term_return a && has_term_return b
+					| _ -> Type.iter loop e; false
+					in
+					if r then raise Exit
 				in
 				try loop e; false with Exit -> true
 			in
@@ -414,7 +446,7 @@ let rec type_inline ctx cf f ethis params tret config p ?(self_calling_closure=f
 					let e = map term e in
 					if term then t := e.etype;
 					[e]
-				| ({ eexpr = TIf (cond,e1,None) } as e) :: l when term && has_return e1 ->
+				| ({ eexpr = TIf (cond,e1,None) } as e) :: l when term && has_term_return e1 ->
 					loop [{ e with eexpr = TIf (cond,e1,Some (mk (TBlock l) e.etype e.epos)); epos = punion e.epos (match List.rev l with e :: _ -> e.epos | [] -> assert false) }]
 				| e :: l ->
 					let e = map false e in
@@ -440,20 +472,14 @@ let rec type_inline ctx cf f ethis params tret config p ?(self_calling_closure=f
 			l.i_write <- true;
 			let e2 = map false e2 in
 			{e with eexpr = TBinop(op,{e1 with eexpr = TLocal l.i_subst},e2)}
-(* 		| TCall({eexpr = TLocal v} as e1,el) ->
-			let el = List.map (map false) el in
-			let l = read_local v in
-			let edef() = {e with eexpr = TCall({e1 with eexpr = TLocal l.i_subst},el)} in
-			begin try
-				begin match List.assq l inlined_vars with
-				| {eexpr = TField(_, (FStatic(_,cf) | FInstance(_,_,cf)))} as e' when cf.cf_kind = Method MethInline ->
-					make_call ctx e' el e.etype e.epos
+		| TObjectDecl fl ->
+			let fl = List.map (fun (s,e) -> s,map false e) fl in
+			begin match follow e.etype with
+				| TAnon an when (match !(an.a_status) with Const -> true | _ -> false) ->
+					{e with eexpr = TObjectDecl fl; etype = TAnon { an with a_status = ref Closed}}
 				| _ ->
-					edef()
-				end
-			with Not_found ->
-				edef()
-			end *)
+					{e with eexpr = TObjectDecl fl}
+			end
 		| TFunction f ->
 			(match f.tf_args with [] -> () | _ -> has_vars := true);
 			let old = save_locals ctx and old_fun = !in_local_fun in
@@ -465,6 +491,9 @@ let rec type_inline ctx cf f ethis params tret config p ?(self_calling_closure=f
 			{ e with eexpr = TFunction { tf_args = args; tf_expr = expr; tf_type = f.tf_type } }
 		| TConst TSuper ->
 			error "Cannot inline function containing super" po
+		| TMeta(m,e1) ->
+			let e1 = map term e1 in
+			{e with eexpr = TMeta(m,e1)}
 		| _ ->
 			Type.map_expr (map false) e
 	in
@@ -1618,6 +1647,9 @@ let optimize_completion_expr e =
 						e)
 				| EFunction (_,f) ->
 					Ast.map_expr (subst_locals { r = PMap.foldi (fun n i acc -> if List.exists (fun (a,_,_,_) -> a = n) f.f_args then acc else PMap.add n i acc) locals.r PMap.empty }) e
+				| EObjectDecl [] ->
+					(* this probably comes from { | completion so we need some context} *)
+					raise Exit
 				| _ ->
 					Ast.map_expr (subst_locals locals) e
 			in

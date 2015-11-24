@@ -39,14 +39,14 @@ For the complete Haxe licenses, please see http://haxe.org/foundation/open-sourc
 
 ## Installing Haxe
 
-The latest stable release is [Haxe 3.2.0-rc2](http://haxe.org/download/version/3.2.0-rc.2/). Pre-built binaries are available for your platform:
+The latest stable release is [Haxe 3.2.0](http://haxe.org/download/version/3.2.0/). Pre-built binaries are available for your platform:
 
- * **[Windows installer](http://haxe.org/download/file/3.2.0-rc.2/haxe-3.2.0-rc2-win.exe)**
- * **[Windows binaries](http://haxe.org/download/file/3.2.0-rc.2/haxe-3.2.0-rc2-win.zip)**
- * **[OSX installer](http://haxe.org/download/file/3.2.0-rc.2/haxe-3.2.0-rc2-osx-installer.pkg)**
- * **[OSX binaries](http://haxe.org/download/file/3.2.0-rc.2/haxe-3.2.0-rc2-osx.tar.gz)**
- * **[Linux 32-bit binaries](http://haxe.org/download/file/3.2.0-rc.2/haxe-3.2.0-rc2-linux32.tar.gz)**
- * **[Linux 64-bit binaries](http://haxe.org/download/file/3.2.0-rc.2/haxe-3.2.0-rc2-linux64.tar.gz)**
+ * **[Windows installer](http://haxe.org/download/file/3.2.0/haxe-3.2.0-win.exe)**
+ * **[Windows binaries](http://haxe.org/download/file/3.2.0/haxe-3.2.0-win.zip)**
+ * **[OSX installer](http://haxe.org/download/file/3.2.0/haxe-3.2.0-osx-installer.pkg)**
+ * **[OSX binaries](http://haxe.org/download/file/3.2.0/haxe-3.2.0-osx.tar.gz)**
+ * **[Linux 32-bit binaries](http://haxe.org/download/file/3.2.0/haxe-3.2.0-linux32.tar.gz)**
+ * **[Linux 64-bit binaries](http://haxe.org/download/file/3.2.0/haxe-3.2.0-linux64.tar.gz)**
 
 Automated development builds are available from [build.haxe.org](http://build.haxe.org).
 
@@ -72,8 +72,12 @@ For information on on using Haxe, consult the [Haxe documentation](http://haxe.o
 
 You can get help and talk with fellow Haxers from around the world via:
 
+ * [Haxe on Stack Overflow](http://stackoverflow.com/questions/tagged/haxe)
  * the [official Haxe Google Group](https://groups.google.com/forum/#!forum/haxelang)
+ * [#Haxe on Twitter](https://twitter.com/hashtag/haxe?src=hash)
  * the [Haxe IRC chatroom](http://unic0rn.github.io/tiramisu/haxe), #haxe on chat.freenode.net
+
+:+1: Get notified of the latest Haxe news, follow us on [Twitter](https://twitter.com/haxelang), [Facebook](https://www.facebook.com/haxe.org) or [Google+](https://plus.google.com/+HaxeOrg)
 
 ## Version compatibility
 
@@ -82,3 +86,4 @@ Haxe   | neko
 2.*    | 1.*
 3.0.0  | 2.0.0
 3.1.3  | 2.0.0
+3.2.0  | 2.0.0

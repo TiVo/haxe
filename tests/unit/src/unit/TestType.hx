@@ -347,21 +347,21 @@ class TestType extends Test {
 		// base class reference
 		var br:Cov1 = c;
 		typedAs(br.covariant(), b);
-		t(Std.is(br.covariant(), Child1));
+		t((br.covariant() is Child1));
 
 		// interface reference
 		var ir:CovI = c;
 		typedAs(ir.covariant(), b);
-		t(Std.is(ir.covariant(), Child1));
+		t((ir.covariant() is Child1));
 
 		// dynamic
 		var dr:Dynamic = c;
-		t(Std.is(dr.covariant(), Child1));
+		t((dr.covariant() is Child1));
 
 		// interface covariance
 		var c3 = new Cov3();
 		typedAs(c3.covariant(), c2_1);
-		t(Std.is(c3.covariant(), Child2_1));
+		t((c3.covariant() is Child2_1));
 	}
 
 	function testContravariantArgs()
@@ -521,6 +521,15 @@ class TestType extends Test {
 	@:analyzer(no_check_has_effect)
 	inline function inlineTest2(map:Array<Dynamic>) {
 		map[0];
+	}
+
+	public function testMacroFollowWithAbstracts()
+	{
+		#if !macro
+		eq(MyMacro.MyMacroHelper.followWithAbstracts(new Map<String,String>()), "TInst(haxe.ds.StringMap,[TInst(String,[])])");
+		eq(MyMacro.MyMacroHelper.followWithAbstractsOnce({ var x:TypedefToStringMap<String>; x; }), "TAbstract(Map,[TInst(String,[]),TInst(String,[])])");
+		eq(MyMacro.MyMacroHelper.followWithAbstracts(new TypedefToStringMap<String>()), "TInst(haxe.ds.StringMap,[TInst(String,[])])");
+		#end
 	}
 
 	public function testMacroRest() {
@@ -696,14 +705,14 @@ class TestType extends Test {
 		var m = new Map<Int,Int>();
 		var map = [1 => 2, 3 => 4];
 		typedAs(map, m);
-		t(Std.is(map, haxe.ds.IntMap));
+		t((map is haxe.ds.IntMap));
 		eq(map.get(1), 2);
 		eq(map.get(3), 4);
 
 		var m = new Map<String,Int>();
 		var map = ["1" => 2, "3" => 4];
 		typedAs(map, m);
-		t(Std.is(map, haxe.ds.StringMap));
+		t((map is haxe.ds.StringMap));
 		eq(map.get("1"), 2);
 		eq(map.get("3"), 4);
 
@@ -712,7 +721,7 @@ class TestType extends Test {
 		var m = new Map<unit.MyAbstract.ClassWithHashCode,Int>();
 		var map = [a => 2, b => 4];
 		typedAs(map, m);
-		//t(Std.is(map, haxe.ds.IntMap));
+		//t((map is haxe.ds.IntMap));
 		eq(map.get(a), 2);
 		eq(map.get(b), 4);
 
@@ -727,11 +736,11 @@ class TestType extends Test {
 	function testAbstractGeneric() {
 		var map = new Map();
 		map.set("foo", 1);
-		t(Std.is(map, haxe.ds.StringMap));
+		t((map is haxe.ds.StringMap));
 
 		var map = new Map();
 		_mapMe(map); // infer from function call
-		t(Std.is(map, haxe.ds.IntMap));
+		t((map is haxe.ds.IntMap));
 
 		var map = new Map();
 		var a = new unit.MyAbstract.ClassWithHashCode(1);
@@ -740,7 +749,7 @@ class TestType extends Test {
 		map.set(b, "bar");
 		eq(map.get(a), "foo");
 		eq(map.get(b), "bar");
-		//t(Std.is(map, haxe.ds.IntMap));
+		//t((map is haxe.ds.IntMap));
 
 		var map = new Map();
 		var a = new unit.MyAbstract.ClassWithoutHashCode(1);
@@ -750,11 +759,11 @@ class TestType extends Test {
 		eq(map.get(a), "foo");
 		eq(map.get(b), "bar");
 		// this may be specialized
-		//t(Std.is(map, haxe.ds.ObjectMap));
+		//t((map is haxe.ds.ObjectMap));
 
 		//var map = new unit.MyAbstract.MyMap();
 		//map.set(new haxe.Template("foo"), 99);
-		//t(Std.is(map, unit.MyAbstract.PseudoObjectHash));
+		//t((map is unit.MyAbstract.PseudoObjectHash));
 
 		// all these cause a compilation error, but we cannot typeError test that because it happens
 		// during a post-process check
@@ -775,12 +784,12 @@ class TestType extends Test {
 		var msum = ms1 + ms2;
 		eq(msum, "foobar");
 		typedAs(msum, ms1);
-		t(Std.is(msum, String));
+		t((msum is String));
 
 		var msum2 = ms1 + 1;
 		eq(msum2, "foo1");
 		typedAs(msum2, ms1);
-		t(Std.is(msum2, String));
+		t((msum2 is String));
 
 		// operation is defined, but return type is not compatible
 		t(typeError(ms1 + true));
@@ -876,3 +885,5 @@ class TestType extends Test {
 		typedAs(unit.MyAbstract.GADTEnumAbstract.B, expectedB);
 	}
 }
+
+typedef TypedefToStringMap<T> = Map<String,T>
