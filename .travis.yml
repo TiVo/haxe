@@ -60,17 +60,42 @@ install_linux: &install_linux
   - export HAXE_STD_PATH="$TRAVIS_BUILD_DIR/std"
 
 install_osx: &install_osx
-  # Install haxe dependencies
-  - travis_retry brew update
-  - travis_retry brew install ocaml camlp4;
-  # Install neko
-  - travis_retry brew install neko --HEAD;
-  # Setup database
-  - travis_retry brew install mysql
-  - mysql.server start
-  - mysql -u root -e "create user if not exists travis@localhost identified by '';"
-  - mysql -u root -e "create database haxe_test;"
-  - mysql -u root -e "grant all on haxe_test.* to travis@localhost;"
+  # Install dependencies
+  - travis_retry brew update --merge
+  - brew uninstall --force brew-cask # https://github.com/caskroom/homebrew-cask/pull/15381
+  - travis_retry brew bundle --file=tests/Brewfile
+  # install neko
+  - if [ ! $DEPLOY_NIGHTLIES ]; then
+      brew install neko --HEAD;
+    else
+      if [ ! -d "$HOME/neko" ]; then
+        mkdir $HOME/neko;
+        pushd $HOME/neko;
+        git clone https://github.com/HaxeFoundation/neko.git .;
+        git submodule update --init --recursive;
+      else
+        pushd $HOME/neko;
+        if [ ! -d "$HOME/neko/.git" ]; then
+          git clone https://github.com/HaxeFoundation/neko.git .;
+          git submodule update --init --recursive;
+        else
+          git fetch --all;
+          git reset --hard origin/master;
+          git submodule update --init --recursive;
+        fi;
+      fi;
+      cmake . -DSTATIC_DEPS=all -G Ninja || (git clean -dfx && cmake . -DSTATIC_DEPS=all -G Ninja);
+      ninja download_static_deps || ninja download_static_deps || ninja download_static_deps;
+      ninja -j 4;
+      sudo ninja install;
+      popd;
+    fi
+  # ocaml dependencies
+  - opam init
+  - eval `opam config env`
+  - opam update
+  - opam pin add haxe . --no-action
+  - opam install haxe --deps-only
   # Build haxe
   - make package_src -s
   - make -s
