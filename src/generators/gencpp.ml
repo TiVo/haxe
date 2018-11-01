@@ -5864,6 +5864,7 @@ let generate_class_files baseCtx super_deps constructor_deps class_def inScripta
          output_cpp "}\n\n";
 
          (* Visit function - explicitly visit all child pointers *)
+         output_cpp "#ifdef HXCPP_VISIT_ALLOCS\n";
          output_cpp ("void " ^ class_name ^ "::__Visit(HX_VISIT_PARAMS)\n{\n");
          if (implement_dynamic) then
             output_cpp "\tHX_VISIT_DYNAMIC;\n";
@@ -5872,6 +5873,7 @@ let generate_class_files baseCtx super_deps constructor_deps class_def inScripta
          | "" -> ()
          | super -> output_cpp ("\t" ^ super ^ "::__Visit(HX_VISIT_ARG);\n") );
          output_cpp "}\n\n";
+         output_cpp "#endif\n\n";
       end;
 
 
