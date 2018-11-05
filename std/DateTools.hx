@@ -231,15 +231,16 @@ class DateTools {
 
 	#if (js || flash || php || cpp || python)
 	/**
-		Retrieve Unix timestamp value from Date components. Takes same argument sequence as the Date constructor.
+		Retrieve UTC timestamp (in milliseconds) value from the provided Date parts.
+		NOTE: This method assumes that, the input Date parts are in UTC timezone.
 	**/
-	public static #if (js || flash || php) inline #end function makeUtc(year : Int, month : Int, day : Int, hour : Int, min : Int, sec : Int ):Float {
+	public static #if (js || flash || php) inline #end function makeUtc(year : Int, month : Int, day : Int, hour : Int = 0, min : Int = 0, sec : Int = 0, millisec : Int = 0 ):Float {
 	    #if (js || flash || python)
-		   return untyped Date.UTC(year, month, day, hour, min, sec);
+		   return untyped Date.UTC(year, month, day, hour, min, sec, millisec);
 		#elseif php
 		   return untyped __call__("gmmktime", hour, min, sec, month + 1, day, year) * 1000;
 		#elseif cpp
-		  return untyped __global__.__hxcpp_utc_date(year,month,day,hour,min,sec)*1000.0 ;
+		  return Date.fromUTC(year,month,day,hour,min,sec,millisec).getTime();
 		#else
 			//TODO
 		   return 0.;

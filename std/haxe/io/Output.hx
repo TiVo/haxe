@@ -276,13 +276,25 @@ class Output {
 		Write `s` string.
 	**/
 	public function writeString( s : String ) {
-		#if neko
-		var b = untyped new Bytes(s.length,s.__s);
-		#else
-		var b = Bytes.ofString(s);
-		#end
-		writeFullBytes(b,0,b.length);
-	}
+        var i = 0;
+        while (i < s.length) {
+            var c = s.charCodeAt(i);
+            if (c <= 0x7F) {
+                writeByte(c);
+                i += 1;
+            }
+            else {
+                s = s.substr(i);
+                #if neko
+                var b = untyped new Bytes(s.length,s.__s);
+                #else
+                var b = Bytes.ofString(s);
+                #end
+                writeFullBytes(b,0,b.length);
+                break;
+            }
+        }
+ 	}
 
 #if neko
 	static function __init__() untyped {

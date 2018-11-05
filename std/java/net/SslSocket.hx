@@ -23,13 +23,31 @@ package java.net;
 
 @:native('haxe.java.net.SslSocket') class SslSocket extends sys.net.Socket {
 
-	override private function create() : Void
+    /** TiVo change -- We don't have SSL support for the Java target yet and we do not
+     *  use it, this is a dummy implementation that throws an exception at runtime but 
+     *  allows us to compile a JAR of the LocaleGenerator (which references in to this class at compile time)
+     *    Typing com.tivo.core.locale.LocaleValues.getValFileLocator
+     *    Typing haxe.Http.requestUrl
+     *    Typing haxe.Http.new
+     *    Typing List.new
+     *    Typing haxe.Http.onData
+     *    Typing haxe.Http.onError
+     *    Typing haxe.Http.request
+     *    Typing haxe.Http.customRequest
+     *    Parsed /sandbox/tcdui2/d-flash/haxetools/dev-host/root/haxe/std/java/net/SslSocket.hx
+     */
+    public function new() : Void
+    {
+        throw ("SslSocket not implemented for Java target");
+        super();
+    }
+
+    /*override private function create() : Void
 	{
 		try
 		{
 			this.sock = java.javax.net.ssl.SSLSocketFactory.getDefault().createSocket();
 			this.server = java.javax.net.ssl.SSLServerSocketFactory.getDefault().createServerSocket();
 		} catch(e:Dynamic) throw e;
-	}
-
+	}*/
 }

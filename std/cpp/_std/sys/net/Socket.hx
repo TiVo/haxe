@@ -218,7 +218,7 @@ class Socket {
    public function peer() : { host : Host, port : Int } {
       var a : Dynamic = NativeSocket.socket_peer(__s);
       if (a == null) {
-         return null;
+          return { host : null, port : 0 };
       }
       var h = new Host("127.0.0.1");
       untyped h.ip = a[0];
@@ -228,7 +228,7 @@ class Socket {
    public function host() : { host : Host, port : Int } {
       var a : Dynamic = NativeSocket.socket_host(__s);
       if (a == null) {
-         return null;
+          return { host : null, port : 0 };
       }
       var h = new Host("127.0.0.1");
       untyped h.ip = a[0];
@@ -261,5 +261,18 @@ class Socket {
          others: neko_array[2]
       };
    }
+
+    /**
+     * This version of select doesn't return anything; it modifies the input
+     * arrays, leaving only those Sockets which are readable in read,
+     * writeable in write, and other in others.
+     **/
+//    public static function fast_select(read : Array<Socket>,
+//                                       write : Array<Socket>,
+//                                       others : Array<Socket>,
+//                                       ?timeout : Float) : Void
+//    {
+//        socket_fast_select(read, write, others, timeout);
+//    }
 
 }

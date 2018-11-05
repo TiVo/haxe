@@ -9,6 +9,7 @@
 #  - use 'make MSVC=1 -f Makefile.win' to build for Windows with OCaml/MSVC
 #
 .SUFFIXES : .ml .mli .cmo .cmi .cmx .mll .mly
+.NOTPARALLEL:
 
 INSTALL_DIR=$(DESTDIR)/usr
 INSTALL_BIN_DIR=$(INSTALL_DIR)/bin
@@ -44,7 +45,12 @@ LIB_PARAMS?= -cclib -lpcre -cclib -lz
 
 endif
 
+# On Mac, we don't need (can't have) -lrt, but on Linux, it's needed for clock_gettime
+ifeq ($(shell uname -s),Darwin)
 NATIVE_LIBS=-cclib libs/extc/extc_stubs.o -cclib libs/extc/process_stubs.o -cclib libs/objsize/c_objsize.o -cclib libs/pcre/pcre_stubs.o -ccopt -L/usr/local/lib $(LIB_PARAMS)
+else
+NATIVE_LIBS=-cclib libs/extc/extc_stubs.o -cclib libs/extc/process_stubs.o -cclib libs/objsize/c_objsize.o -lrt -cclib libs/pcre/pcre_stubs.o -ccopt -L/usr/local/lib $(LIB_PARAMS)
+endif
 
 ifeq ($(BYTECODE),1)
 	TARGET_FLAG = bytecode
@@ -78,15 +84,12 @@ MODULES=json version globals path context/meta syntax/ast display/displayTypes t
 
 ADD_REVISION?=0
 
-BRANCH=$(shell echo $$APPVEYOR_REPO_NAME | grep -q /haxe && echo $$APPVEYOR_REPO_BRANCH || echo $$TRAVIS_REPO_SLUG | grep -q /haxe && echo $$TRAVIS_BRANCH || git rev-parse --abbrev-ref HEAD)
-COMMIT_SHA=$(shell git rev-parse --short HEAD)
-COMMIT_DATE=$(shell \
-	if [ "$$(uname)" = "Darwin" ]; then \
-		date -u -r $$(git show -s --format=%ct HEAD) +%Y%m%d%H%M%S; \
-	else \
-		date -u -d @$$(git show -s --format=%ct HEAD) +%Y%m%d%H%M%S; \
-	fi \
-)
+# BRANCH=$(shell echo $$APPVEYOR_REPO_NAME | grep -q /haxe && echo $$APPVEYOR_REPO_BRANCH || echo $$TRAVIS_REPO_SLUG | grep -q /haxe && echo $$TRAVIS_BRANCH || git rev-parse --abbrev-ref HEAD)
+# COMMIT_SHA=$(shell git rev-parse --short HEAD)
+# COMMIT_DATE=$(shell git show -s --format=%ci HEAD | grep -oh ....-..-..)
+BRANCH=tivo
+COMMIT_SHA=x
+COMMIT_DATE=now
 PACKAGE_FILE_NAME=haxe_$(COMMIT_DATE)_$(COMMIT_SHA)
 HAXE_VERSION=$(shell $(OUTPUT) -version 2>&1 | awk '{print $$1;}')
 
@@ -397,3 +400,9 @@ clean_package:
 	ocamllex $<
 
 .PHONY: haxe libs version.cmx version.cmo haxelib
+
+.PHONY: default
+default: all tools
+
+.PHONY: clobber
+clobber: clean

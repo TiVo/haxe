@@ -94,6 +94,25 @@ class ThreadInfo
    }
 
 /**
+ * Simple class that doesn't unify with an empty object or TBool:false.
+ * Implementation detail of the Debugger class.
+ **/
+class NonExistentValue {
+    private static var valueString : String = "NONEXISTENT_VALUE";
+    public function new() {}
+    public function toString() : String { return valueString; }
+}
+/**
+ * Simple class that doesn't unify with an empty object or TBool:false.
+ * Implementation detail of the Debugger class.
+ **/
+class ThreadNotStopped {
+    private static var valueString : String = "THREAD_NOT_STOPPED";
+    public function new() {}
+    public function toString() : String { return valueString; }
+}
+
+/**
  * This class wraps the hxcpp C++ implementation to provide a Haxe interface
  * to the low level debugging features
  **/
@@ -111,11 +130,11 @@ class Debugger
     // This tagging value is returned by getStackVariableValue() and
     // setStackVariableValue if the requested value does not exist at the
     // requested stack frame
-    public static var NONEXISTENT_VALUE = new String("NONEXISTENT_VALUE");
+    public static var NONEXISTENT_VALUE : NonExistentValue = new NonExistentValue();
     // This tagging value is returned by getStackVariableValue and
     // setStackVariableValue if the stack variable that is being set is on a
     // thread that is running, in which case the set does not take place.
-    public static var THREAD_NOT_STOPPED = new String("THREAD_NOT_STOPPED");
+    public static var THREAD_NOT_STOPPED : ThreadNotStopped = new ThreadNotStopped();
 
     /**
      * Sets the handler callback to be made when asynchronous events occur,
@@ -140,8 +159,8 @@ class Debugger
      *          - threadNumber, the thread number of the event
      *          - event, one of THREAD_CREATED, THREAD_TERMINATED,
      *            THREAD_STARTED, or THREAD_STOPPED
-     *          - stackFrame, the stack frame number at which the thread is stopped,
-     *            undefined if event is not THREAD_STOPPED
+     *          - stackFrame, the stack frame number at which the thread is
+     *            stopped, undefined if event is not THREAD_STOPPED
      *          - className, the class name at which the thread is stopped,
      *            undefined if event is not THREAD_STOPPED
      *          - functionName, the function name at which the thread is

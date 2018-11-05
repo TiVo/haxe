@@ -47,12 +47,14 @@ extern class Date
 		- hour: 0 to 23
 		- min: 0 to 59
 		- sec: 0 to 59
+		- millisec: 0 to 999
 	**/
-	function new(year : Int, month : Int, day : Int, hour : Int, min : Int, sec : Int ) : Void;
+	function new(year : Int, month : Int, day : Int, hour : Int = 0, min : Int = 0, sec : Int = 0, millisec : Int = 0) : Void;
 
 	/**
-		Returns the timestamp (in milliseconds) of the date. It might
-		only have a per-second precision depending on the platforms.
+		Returns the (Epoch) UTC timestamp of `this` Date, in milliseconds.
+		Though always returned as milliseconds, it might only have a per-second accuracy depending on the platform & target.
+		e.g. 10/11/2013 4:05:35.641 PDT may be: 1381489535 (neko target), but as 1381489535.641 (Linux x64 C++ target)
 	**/
 	function getTime() : Float;
 
@@ -70,6 +72,11 @@ extern class Date
 		Returns the seconds of `this` Date (0-59 range).
 	**/
 	function getSeconds() : Int;
+
+	/**
+		Returns the milliseconds of the `this` Date (0-999 range).
+	**/
+	function getMilliseconds() : Int;
 
 	/**
 		Returns the full year of `this` Date (4-digits).
@@ -92,9 +99,84 @@ extern class Date
 	function getDay() : Int;
 
 	/**
+		Returns the time zone offset of `this` Date, in seconds.
+	**/
+	function timezoneOffset() : Int;
+
+	/**
+		Indicates whether `this` Date is in DST or not.
+	**/
+	function isDST() : Bool;
+
+	/**
+		Returns the hours in UTC equivalent of `this` Date (0-23 range).
+	**/
+	function getUtcHours() : Int;
+
+	/**
+		Returns the minutes in UTC equivalent of `this` Date (0-59 range).
+	**/
+	function getUtcMinutes() : Int;
+
+	/**
+		Returns the seconds in UTC equivalent of the `this` Date (0-59 range).
+	**/
+	function getUtcSeconds() : Int;
+
+	/**
+		Returns the milliseconds in UTC equivalent of the `this` Date (0-59 range).
+	**/
+	function getUtcMilliseconds() : Int;
+
+	/**
+		Returns the full year in UTC equivalent of `this` Date (4-digits).
+	**/
+	function getUtcFullYear() : Int;
+
+	/**
+		Returns the month in UTC equivalent of `this` Date (0-11 range).
+	**/
+	function getUtcMonth() : Int;
+
+	/**
+		Returns the day in UTC equivalent of `this` Date (1-31 range).
+	**/
+	function getUtcDate() : Int;
+
+	/**
+		Returns the day of the week in UTC equivalent of `this` Date (0-6 range).
+	**/
+	function getUtcDay() : Int;
+
+	/**
+		Get a Date instance for input Date parts that are assumed to be in UTC.
+	**/
+	static function fromUTC( year : Int, month : Int, day : Int, hour : Int = 0, min : Int = 0, sec : Int = 0, millisec : Int = 0 ) : Date; 
+
+	/**
+		Returns a string representation of `this` Date, by using the
+		standard format [YYYY-MM-DD HH:MM:SS].
+
+		Note: the date/time output from this method is in UTC timezone.
+
+		Output of this method should not be passed to fromString.
+	**/
+	function toUtcString():String;
+
+	/**
 		Returns a string representation of `this` Date, by using the
 		standard format [YYYY-MM-DD HH:MM:SS]. See `DateTools.format` for
 		other formating rules.
+
+		Note: the date/time output from this method is in local timezone.
+
+		Output of this method must be consumable by Date.fromString() i.e.
+		       var x : Date = Date.now();
+			   var y : Date = Date.fromString( x.toString() );
+		should always work. Above two objects should be equal to the precision
+		of seconds (not milliseconds as toString does not emit that info).
+
+		
 	**/
 	function toString():String;
 
@@ -115,12 +197,12 @@ extern class Date
 		- `"YYYY-MM-DD hh:mm:ss"`
 		- `"YYYY-MM-DD"`
 		- `"hh:mm:ss"`
+		Formats are expressed in local time.
 
-		The first two formats are expressed in local time, the third in UTC
-		Epoch.
+		If the optional 'isUtc' flag is set to true, returns a Date where the string is
+		interpreted as UTC time. Default is false.
 	**/
-	static function fromString( s : String ) : Date;
-
+	static function fromString( s : String, isUtc : Bool = false ) : Date;
 
 #if flash
 	private static function __init__() : Void untyped {

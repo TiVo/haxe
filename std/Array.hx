@@ -285,4 +285,15 @@ extern class Array<T> {
 		If `f` is null, the result is unspecified.
 	**/
 	function filter( f : T -> Bool ) : Array<T>;
+
+#if cpp
+    /**
+        The cpp target defines an additional function to be used to append
+        the contents of an Array of unsigned characters to the end of this
+        Array.  This is used only by haxe.io.BytesBuffer.add() and
+        haxe.io.BytesBuffer.addBytes().  This is purely an optimization for
+        runtime efficiency.
+    **/
+    function addBytes(a : Dynamic, p : Int, l : Int) : Void;
+#end
 }

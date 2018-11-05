@@ -35,6 +35,8 @@ enum StackItem {
 /**
 	Get information about the call stack.
 **/
+
+@:keep
 class CallStack {
 	#if js
 	static var lastException:js.Error;
@@ -188,6 +190,9 @@ class CallStack {
 			return makeStack(s);
 		#elseif java
 			var stack = [];
+			if(java.internal.Exceptions.currentException() == null){
+				return stack;
+			}
 			for ( el in java.internal.Exceptions.currentException().getStackTrace() ) {
 				var className = el.getClassName();
 				var methodName = el.getMethodName();

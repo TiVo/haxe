@@ -349,6 +349,16 @@ class Bytes {
 		#end
 	}
 
+#if java
+        /**
+         * TiVo -- doesn't seem to work for some versions of Java.  Need to
+         * investigate and provide an implementation that works for all
+         * Java compilers in use.
+         **/
+	public inline function setInt64( pos : Int, v : Dynamic ) : Void {
+        throw "haxe.io.Bytes.setInt64 is unsupported for Java targets";
+    }
+#else
 	/**
 		Store the 64 bit integer at given position (in low endian encoding).
 	**/
@@ -356,6 +366,7 @@ class Bytes {
 		setInt32(pos, v.low);
 		setInt32(pos + 4, v.high);
 	}
+#end
 
 	public function getString( pos : Int, len : Int ) : String {
 		#if !neko

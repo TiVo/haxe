@@ -25,7 +25,7 @@ import neko.Lib;
 
 	private var __t : Dynamic;
 
-	public function new(year : Int, month : Int, day : Int, hour : Int, min : Int, sec : Int ) : Void {
+	public function new(year : Int, month : Int, day : Int, hour : Int = 0, min : Int = 0, sec : Int = 0, millisec : Int = 0) : Void {
 		__t = date_set_day(0,year,month+1,day);
 		__t = date_set_hour(__t,hour,min,sec);
 	}
@@ -58,9 +58,67 @@ import neko.Lib;
 		return date_get_hour(__t).s;
 	}
 
+    public function getMilliseconds() : Int { return 0; }
+
 	public function getDay() : Int {
 		return Std.parseInt( new String(date_format(__t,untyped "%w".__s)) );
 	}
+
+    public function timezoneOffset() : Int {
+        // it is incorrect to fetch local timezone offset based on system settings
+        // even for local timezone, based on date ... timezone offset varies
+        // e.g. for a system that's currently in DST, offset may be -7 but, for a future date it could be -8
+        //      so, reading system timezone offset and applying it to future date is incorrect
+
+        return 0; // TODO: fix this
+    }
+
+    public function isDST() : Bool {
+        // it is incorrect to fetch DST flag based on system settings
+        // even for local timezone, based on date ... DST flag varies
+        // e.g. a system could be currently in DST but a future Date object is not
+
+        return false; // TODO: fix this
+    }
+
+    public function getUtcHours() : Int {
+        return 0; // TODO: fix this
+    }
+
+    public function getUtcMinutes() : Int {
+        return 0; // TODO: fix this
+    }
+
+    public function getUtcSeconds() : Int {
+        return 0; // TODO: fix this
+    }
+
+    public function getUtcMilliseconds() : Int { return 0; }
+
+    public function getUtcFullYear() : Int {
+        return 0; // TODO: fix this
+    }
+
+    public function getUtcMonth() : Int {
+        return 0; // TODO: fix this
+    }
+
+    public function getUtcDate() : Int {
+        return 0; // TODO: fix this
+    }
+
+    public function getUtcDay() : Int {
+        return 0; // TODO: fix this
+    }
+
+    public static function fromUTC( year : Int, month : Int, day : Int, hour : Int = 0, min : Int = 0, sec : Int = 0, millisec : Int = 0 ) : Date {
+        var d : Date = new Date(year,month,day,hour,min,sec,millisec);
+        return fromTime(((d.getTime()/1000) + d.timezoneOffset())*1000); // TODO: fix this
+    }
+
+    public function toUtcString():String {
+        return toString(); // TODO: fix this 
+    }
 
 	@:keep public function toString():String {
 		return new String(date_format(__t,null));
@@ -78,8 +136,8 @@ import neko.Lib;
 		return new1(i);
 	}
 
-	public static function fromString( s : String ) : Date {
-		return new1(date_new(untyped s.__s));
+	public static function fromString( s : String, isUtc : Bool = false ) : Date {
+		return new1(date_new(untyped s.__s)); // TODO: fix this
 	}
 
 	private static function new1(t : Dynamic) : Date {
@@ -99,7 +157,5 @@ import neko.Lib;
 	static var int32_add = Lib.load("std","int32_add",2);
 	static var int32_shl = Lib.load("std","int32_shl",2);
 	@:keep static function __string() : String { return untyped "Date".__s; }
-
 }
-
 

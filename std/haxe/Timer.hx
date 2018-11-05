@@ -171,7 +171,7 @@ class Timer {
 			return flash.Lib.getTimer() / 1000;
 		#elseif (neko || php)
 			return Sys.time();
-		#elseif js
+		#elseif (js||java)
 			return Date.now().getTime() / 1000;
 		#elseif cpp
 			return untyped __global__.__time_stamp();
@@ -190,7 +190,7 @@ class Timer {
 #if java
 @:nativeGen
 private class TimerTask extends java.util.TimerTask {
-	var timer:Timer;
+	var timer:haxe.Timer;
 	public function new(timer:Timer):Void {
 		super();
 		this.timer = timer;

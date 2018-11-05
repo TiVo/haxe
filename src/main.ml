@@ -556,7 +556,8 @@ try
 		),"<class> : select startup class");
 		("-lib",Arg.String (fun l ->
 			cp_libs := l :: !cp_libs;
-			Common.raw_define com l;
+            (* Why is the lib name used in a -D argument??? *)
+			(* Common.raw_define com l; *)
 		),"<library[:version]> : use a haxelib library");
 		("-D",Arg.String (fun var ->
 			begin match var with
@@ -963,4 +964,4 @@ with DisplayOutput.Completion c ->
 	exit 1
 );
 other();
-if !measure_times then report_times prerr_endline
+if !measure_times then report_times print_endline

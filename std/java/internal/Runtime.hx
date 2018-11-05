@@ -84,11 +84,14 @@ package java.internal;
 				if (v1 instanceof java.lang.Long || v2 instanceof java.lang.Long)
 					return v1c.longValue() == v2c.longValue();
 				return v1c.doubleValue() == v2c.doubleValue();
+
 			} else if (v1 instanceof java.lang.String || v1 instanceof haxe.lang.IEquatable) { //TODO see what happens with Boolean cases
+				return v1.equals(v2);
+			} else if ((v1 instanceof haxe.lang.Closure) && (v2 instanceof haxe.lang.Closure)) {
 				return v1.equals(v2);
 			}
 
-			return false;
+                        return false;
 	')
 	public static function eq(v1:Dynamic, v2:Dynamic):Bool
 	{
@@ -395,6 +398,7 @@ package java.internal;
 		}
 
 		boolean hasNumber = false;
+        boolean hasBoolean = false;
 
 		for (int i = 0; i < len; i++)
 		{
@@ -404,10 +408,11 @@ package java.internal;
 				continue; //can be anything
 			}
 			objs[i]= o;
-			cls[i] = o.getClass();
+			cls[i] = (o == null) ? null : o.getClass();
 			boolean isNum = false;
+            boolean isBoolean = false;
 
-			if (o instanceof java.lang.Number)
+			if ((o != null) && (o instanceof java.lang.Number))
 			{
 				cls[i] = java.lang.Number.class;
 				isNum = hasNumber = true;
@@ -415,6 +420,11 @@ package java.internal;
 				cls[i] = java.lang.Boolean.class;
 				isNum = true;
 			}
+            else if ((o != null) && (o instanceof java.lang.Boolean))
+            {
+                cls[i] = java.lang.Boolean.class;
+                isBoolean = hasBoolean = true;
+            }
 
 			msl = realMsl;
 			realMsl = 0;
@@ -424,14 +434,18 @@ package java.internal;
 				java.lang.Class[] allcls = ms[j].getParameterTypes();
 				if (i < allcls.length)
 				{
-					if (!  ((isNum && allcls[i].isPrimitive()) || allcls[i].isAssignableFrom(cls[i])) )
+                    String allclsName = allcls[i].getName();
+                    boolean allclsIsBoolean = (allclsName == "boolean") || (allclsName == "java.lang.Boolean");
+                    boolean allclsIsNumber = allcls[i].isPrimitive() && !allclsIsBoolean;
+
+					if ((isNum && allclsIsNumber) || (isBoolean && allclsIsBoolean) || (cls[i] == null) || allcls[i].isAssignableFrom(cls[i]))
 					{
-						ms[j] = null;
-					} else {
 						ms[realMsl] = ms[j];
 						if (realMsl != j)
 							ms[j] = null;
 						realMsl++;
+					} else {
+						ms[j] = null;
 					}
 				}
 			}
@@ -449,7 +463,7 @@ package java.internal;
 			for (int i = 0; i < len; i++)
 			{
 				java.lang.Object o = objs[i];
-				if (o instanceof java.lang.Number)
+				if ((o != null) && (o instanceof java.lang.Number))
 				{
 					java.lang.Class curCls = null;
 					if (i < allcls.length)
@@ -482,6 +496,31 @@ package java.internal;
 				}
 			}
 		}
+        else if (hasBoolean)
+        {
+			java.lang.Class[] allcls = found.getParameterTypes();
+
+			for (int i = 0; i < len; i++)
+			{
+				java.lang.Object o = objs[i];
+				if ((o != null) && (o instanceof java.lang.Boolean))
+				{
+					java.lang.Class curCls = null;
+					if (i < allcls.length)
+					{
+						curCls = allcls[i];
+						if (!curCls.isAssignableFrom(o.getClass()))
+						{
+							String name = curCls.getName();
+							if (name.equals("boolean") || name.equals("java.lang.Boolean"))
+							{
+								objs[i] = ((java.lang.Boolean)o).booleanValue();
+							}
+                        }
+					} //else varargs not handled TODO
+				}
+			}
+        }
 
 		try {
 			found.setAccessible(true);

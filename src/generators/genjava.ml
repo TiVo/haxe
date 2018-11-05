@@ -126,7 +126,7 @@ let like_bool t =
 let is_int_float gen t =
 	match follow (gen.greal_type t) with
 		| TInst( { cl_path = (["haxe"], "Int32") }, [] )
-		| TAbstract( { a_path =	([], "Int") }, [] )
+ 		| TAbstract( { a_path =	([], "Int") }, [] )
 		| TAbstract( { a_path =	([], "Float") }, [] ) ->
 			true
 		| (TAbstract _ as t) when like_float t && not (like_i64 t)-> true

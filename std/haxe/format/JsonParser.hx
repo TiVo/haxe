@@ -42,7 +42,23 @@ class JsonParser {
 		If `str` is null, the result is unspecified.
 	**/
 	static public inline function parse(str : String) : Dynamic {
+        // If cpp, each thread gets its own static parser so that the
+        // object is not created on each parse.  Don't do this if
+        // TIVOCONFIG_NATIVE_ACCESS though because it's not safe to use
+        // Tls from native, non-haxe threads.
+#if (cpp && !TIVOCONFIG_NATIVE_ACCESS)
+        var p = gParserTls.value;
+        if (p == null) {
+            p = new JsonParser(str);
+            gParserTls.value = p;
+        }
+        else {
+            p.reset(str);
+        }
+        return p.parseRec();
+#else
 		return new JsonParser(str).parseRec();
+#end
 	}
 
 	var str : String;
@@ -254,4 +270,16 @@ class JsonParser {
 	function invalidNumber( start : Int ) {
 		throw "Invalid number at position "+start+": " + str.substr(start, pos - start);
 	}
+
+#if (cpp && !TIVOCONFIG_NATIVE_ACCESS)
+    function reset(str : String)
+    {
+        this.str = str;
+        this.pos = 0;
+    }
+    
+    // Object churn reduction
+    static var gParserTls : cpp.vm.Tls<JsonParser> =
+        new cpp.vm.Tls<JsonParser>();
+#end
 }
