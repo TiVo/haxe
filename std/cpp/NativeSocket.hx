@@ -93,10 +93,6 @@ extern class NativeSocket
    public static function socket_select(rs:Array<Dynamic>,ws:Array<Dynamic>,es:Array<Dynamic>,timeout:Dynamic) : Array<Dynamic> return null;
 
 
-   @:extern @:native("_hx_std_socket_fast_select")
-   public static function socket_fast_select(rs:Array<Dynamic>,ws:Array<Dynamic>,es:Array<Dynamic>,timeout:Dynamic) : Void { }
-
-
    @:extern @:native("_hx_std_socket_accept")
    public static function socket_accept(o:Dynamic) : Dynamic return null;
 

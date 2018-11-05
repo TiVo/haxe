@@ -1123,7 +1123,6 @@ let run com tctx main =
 	else
 		(try Common.defined_value com Define.Dce with _ -> "no")
 	in
-    let dce_timer = Common.timer ("dce timer for dce_mode: " ^ dce_mode) in 
 	begin match dce_mode with
 		| "full" -> Dce.run com main (not (Common.defined com Define.Interp))
 		| "std" -> Dce.run com main false
@@ -1142,5 +1141,4 @@ let run com tctx main =
 		commit_features;
 		(if com.config.pf_reserved_type_paths <> [] then check_reserved_type_paths else (fun _ _ -> ()));
 	] in
-    List.iter (fun t -> List.iter (fun f -> f tctx t) type_filters) com.types;
-    type_filters_timer();
+	List.iter (fun t -> List.iter (fun f -> f tctx t) type_filters) com.types
