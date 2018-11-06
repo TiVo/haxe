@@ -259,10 +259,13 @@ class Compiler {
 				} else if( rec && sys.FileSystem.isDirectory(path + "/" + file) && !skip(prefix + file) )
 					include(prefix + file, true, ignore, classPaths);
 			}
-		}
+            }
+        }
+		
 		if (strict && !found)
 			Context.error('Package "$pack" was not found in any of class paths', Context.currentPos());
-	}
+    }
+	
 
 	/**
 		Exclude a class or an enum without changing it to `@:nativeGen`.
