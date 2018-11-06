@@ -116,7 +116,7 @@ let module_pass_1 ctx m tdecls loadp =
 			c.cl_meta <- d.d_meta;
             (* TiVo special HACK to force our mdo fixup macro in *)
             let is_std_file file =
-                List.exists (fun path -> ExtString.String.starts_with file (Common.unique_full_path path)) ctx.com.std_path in
+                List.exists (fun path -> ExtString.String.starts_with file (Path.unique_full_path path)) ctx.com.std_path in
             let tivo_hack_enabled =
                 Common.defined ctx.com Define.TiVoApplyMdoFixupMacro in
             if not ctx.in_macro && tivo_hack_enabled && not (is_std_file m.m_extra.m_file) then begin

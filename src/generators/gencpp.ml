@@ -4076,7 +4076,6 @@ let hx_stack_push ctx output clazz func_name pos =
          output ("HX_STACK_FRAME(\"" ^ clazz ^ "\",\"" ^ func_name ^ "\"," ^ hash_class_func ^ ",\"" ^
                full_name ^ "\",\"" ^ esc_file ^ "\"," ^
 			    (string_of_int (Lexer.get_error_line pos) ) ^  "," ^ hash_file ^ ")\n");
-        ctx.ctx_last_stack_line_dumped <- -1;
            end
       end
    end
@@ -4091,7 +4090,7 @@ let gen_cpp_function_body ctx clazz is_static func_name function_def head_code t
       let spacer = if no_debug then "\t" else "            \t" in
       let output_i = fun s -> output (spacer ^ s) in
       ctx_default_values ctx function_def.tf_args "__o_";
-      hx_stack_push ctx output_i dot_name func_name function_def.tf_expr.epos gc_stack;
+      hx_stack_push ctx output_i dot_name func_name function_def.tf_expr.epos;
       if ctx.ctx_debug_level >= 2 then begin
          if (not is_static)
             then output_i ("HX_STACK_THIS(" ^ (if ctx.ctx_real_this_ptr then "this" else "__this") ^")\n");
@@ -4116,7 +4115,7 @@ let gen_cpp_init ctx dot_name func_name var_name expr =
    let prologue = function gc_stack ->
       let spacer = if ctx.ctx_debug_level > 0 then "            \t" else "\t" in
       let output_i = fun s -> output (spacer ^ s) in
-         hx_stack_push ctx output_i dot_name func_name expr.epos gc_stack;
+         hx_stack_push ctx output_i dot_name func_name expr.epos;
    in
    let injection = mk_injection prologue var_name "" in
    gen_cpp_ast_expression_tree ctx dot_name func_name [] t_dynamic injection (mk_block expr);
@@ -4218,7 +4217,6 @@ let gen_field ctx class_def class_name ptr_name dot_name is_static is_interface 
    let remap_name = keyword_remap field.cf_name in
    let decl = get_meta_string field.cf_meta Meta.Decl in
    let has_decl = decl <> "" in
-   let nativeGen = has_meta_key class_def.cl_meta Meta.NativeGen in
    (* TiVo addition -- If a field can be completely removed from output,
       emit nothing *)
    if can_be_elided class_def field then ()
@@ -5228,7 +5226,7 @@ let has_get_static_field class_def =
 
 let has_boot_field class_def =
    match class_def.cl_init with
-   | None -> List.exists has_field_init (List.filter should_implement_field class_def.cl_ordered_statics)
+   | None -> List.exists has_field_init (List.filter (should_implement_field class_def) class_def.cl_ordered_statics)
    | _ -> true
 ;;
 
@@ -5491,8 +5489,7 @@ let generate_class_files baseCtx super_deps constructor_deps class_def inScripta
 
    (* Field groups *)
    let statics_except_meta = statics_except_meta class_def in
-   let implemented_fields = List.filter should_implement_field statics_except_meta in
-   let implemented_instance_fields = List.filter should_implement_field class_def.cl_ordered_fields in
+   let implemented_instance_fields = List.filter (should_implement_field class_def) class_def.cl_ordered_fields in
 
    let reflect_member_fields = List.filter (reflective class_def) class_def.cl_ordered_fields in
    let reflect_member_readable = List.filter (is_readable class_def) reflect_member_fields in
@@ -5503,8 +5500,6 @@ let generate_class_files baseCtx super_deps constructor_deps class_def inScripta
    let reflect_static_readable = List.filter (is_readable class_def) reflect_static_fields in
    let reflect_static_writable = List.filter (is_writable class_def) reflect_static_fields in
    let reflect_write_static_variables = List.filter variable_field reflect_static_writable in
-
-   let reflective_members = List.filter (reflective class_def) implemented_instance_fields in
 
    (* native interface glue *)
    let neededInterfaceFunctions = if not implementsNative then []
@@ -5753,7 +5748,6 @@ let generate_class_files baseCtx super_deps constructor_deps class_def inScripta
       output_cpp "\n\n";
    | _ -> ());
 
-   let statics_except_meta = statics_except_meta class_def in
    let implemented_fields = List.filter (should_implement_field class_def) statics_except_meta in
    let dump_field_name = (fun field -> output_cpp ("\t" ^  (str field.cf_name) ^ ",\n")) in
    let implemented_instance_fields = List.filter (should_implement_field class_def) class_def.cl_ordered_fields in
