@@ -3368,7 +3368,7 @@ let init_module_type ctx context_init do_init (decl,p) =
 		| TMono r ->
 			(match !r with
 			| None -> r := Some tt;
-			| Some _ -> assert false);
+			| Some _ -> error "Internal compiler error" p);
 		| _ -> assert false);
 		if ctx.com.platform = Cs && t.t_meta <> [] then
 			delay ctx PTypeField (fun () ->
