@@ -4,3 +4,4 @@
 [submodule "extra/haxelib_src"]
 	path = extra/haxelib_src
 	url = https://github.com/TiVo/haxelib.git
+	branch = tivo_changes
