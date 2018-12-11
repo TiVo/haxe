@@ -23,7 +23,7 @@
 {
 	private var __t : Float;
 
-	public function new(year : Int, month : Int, day : Int, hour : Int, min : Int, sec : Int ) : Void {
+	public function new(year : Int, month : Int, day : Int, hour : Int = 0, min : Int = 0, sec : Int = 0, millisec : Int = 0) : Void {
 		__t = untyped __call__("mktime", hour, min, sec, month+1, day, year);
 	}
 
@@ -60,9 +60,69 @@
 		return untyped __call__("intval", __call__("date", "s", this.__t));
 	}
 
+    public function getMilliseconds() : Int { return 0; }
+
 	public function getDay() : Int {
 		return untyped __call__("intval", __call__("date", "w", this.__t));
 	}
+
+    public function timezoneOffset() : Int {
+        // it is incorrect to fetch local timezone offset based on system settings
+        // even for local timezone, based on date ... timezone offset varies
+        // e.g. for a system that's currently in DST, offset may be -7 but, for a future date it could be -8
+        //      so, reading system timezone offset and applying it to future date is incorrect
+
+        return 0; // TODO: fix this
+    }
+
+    public function isDST() : Bool {
+        // it is incorrect to fetch DST flag based on system settings
+        // even for local timezone, based on date ... DST flag varies
+        // e.g. a system could be currently in DST but a future Date object is not
+
+        return false; // TODO: fix this
+    }
+
+    public function getUtcHours() : Int {
+        return 0; // TODO: fix this
+    }
+
+    public function getUtcMinutes() : Int {
+        return 0; // TODO: fix this
+    }
+
+    public function getUtcSeconds() : Int {
+        return 0; // TODO: fix this
+    }
+
+    public function getUtcMilliseconds() : Int {
+        return 0; // TODO: fix this
+    }
+
+    public function getUtcFullYear() : Int {
+        return 0; // TODO: fix this
+    }
+
+    public function getUtcMonth() : Int {
+        return 0; // TODO: fix this
+    }
+
+    public function getUtcDate() : Int {
+        return 0; // TODO: fix this
+    }
+
+    public function getUtcDay() : Int {
+        return 0; // TODO: fix this
+    }
+
+    public static function fromUTC( year : Int, month : Int, day : Int, hour : Int = 0, min : Int = 0, sec : Int = 0, millisec : Int = 0 ) : Date {
+        var d : Date = new Date(year,month,day,hour,min,sec,millisec);
+        return fromTime(((d.getTime()/1000) + d.timezoneOffset())*1000); // TODO: fix this
+    }
+
+    public function toUtcString():String {
+        return toString(); // TODO: fix this
+    }
 
 	public function toString():String {
 		return untyped __call__("date", "Y-m-d H:i:s", this.__t);
@@ -84,8 +144,8 @@
 		return d;
 	}
 
-	public static function fromString( s : String ) : Date {
-		return fromPhpTime(untyped __call__("strtotime", s));
+	public static function fromString( s : String, isUtc : Bool = false ) : Date {
+		return fromPhpTime(untyped __call__("strtotime", s)); // TODO: fix this
 	}
 }
 

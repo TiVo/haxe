@@ -107,6 +107,8 @@ class BytesBuffer {
 		var b2 = @:privateAccess src.b;
 		for( i in 0...src.length )
 			b.push(b2[i]);
+		#elseif cpp
+        cpp.NativeArray.blit(b, b.length, src.getData(), 0, src.length);
 		#else
 		var b1 = b;
 		var b2 = src.getData();
@@ -136,10 +138,16 @@ class BytesBuffer {
 		#end
 	}
 
+#if 0
+    /**
+     * TiVo -- disabled this because the current version of hxjava is buggy
+     * and generates noncompilable java code for this
+     **/
 	public #if flash inline #end function addInt64( v : haxe.Int64 ) {
 		addInt32(v.low);
 		addInt32(v.high);
 	}
+#end
 
 	public inline function addFloat( v : Float ) {
 		#if flash
@@ -153,7 +161,10 @@ class BytesBuffer {
 		#if flash
 		b.writeDouble(v);
 		#else
-		addInt64(FPHelper.doubleToI64(v));
+        /* TiVo modified to work around compiler bugs */
+        var d = FPHelper.doubleToI64(v);
+        addInt32(d.low);
+        addInt32(d.high);
 		#end
 	}
 
@@ -176,6 +187,8 @@ class BytesBuffer {
 		var b2 = @:privateAccess src.b;
 		for( i in pos...pos+len )
 			b.push(b2[i]);
+		#elseif cpp
+        cpp.NativeArray.blit(b, b.length, src.getData(), pos, len);
 		#else
 		var b1 = b;
 		var b2 = src.getData();

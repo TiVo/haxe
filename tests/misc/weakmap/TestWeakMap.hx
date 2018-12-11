@@ -22,6 +22,12 @@ class TestWeakMap
 		while(true)
 		{
 			i++;
+            if ((i % 10000) == 0) {
+                trace("iteration " + i);
+                if (i == 2000000) {
+                    break;
+                }
+            }
 			var obj = { count:i };
 			map.set(obj, i);
 			if (i % 77 == 0)

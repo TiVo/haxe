@@ -99,6 +99,8 @@ private class SocketOutput extends haxe.io.Output {
 		} catch( e : Dynamic ) {
 			if( e == "Blocking" )
 				throw Blocked;
+			else if (e == "EOF")
+				throw new haxe.io.Eof();
 			else
 				throw Custom(e);
 		}
@@ -158,6 +160,10 @@ class Socket {
 		} catch( s : String ) {
 			if( s == "std@socket_connect" )
 				throw "Failed to connect on "+host.toString()+":"+port;
+			else if (s == "Blocking") {
+				// Do nothing, this is not a real error, it simply indicates
+				// that a non-blocking connect is in progress
+			}
 			else
 				cpp.Lib.rethrow(s);
 		}
@@ -186,16 +192,26 @@ class Socket {
 
 	public function peer() : { host : Host, port : Int } {
 		var a : Dynamic = socket_peer(__s);
-		var h = new Host("127.0.0.1");
-		untyped h.ip = a[0];
-		return { host : h, port : a[1] };
+		if (a == null) {
+			return { host : null, port : 0 };
+		}
+		else {
+			var h = new Host("127.0.0.1");
+			untyped h.ip = a[0];
+			return { host : h, port : a[1] };
+		}
 	}
 
 	public function host() : { host : Host, port : Int } {
 		var a : Dynamic = socket_host(__s);
-		var h = new Host("127.0.0.1");
-		untyped h.ip = a[0];
-		return { host : h, port : a[1] };
+		if (a == null) {
+			return { host : null, port : 0 };
+		}
+		else {
+			var h = new Host("127.0.0.1");
+			untyped h.ip = a[0];
+			return { host : h, port : a[1] };
+		}
 	}
 
 	public function setTimeout( timeout : Float ) : Void {
@@ -225,6 +241,19 @@ class Socket {
 		};
 	}
 
+    /**
+     * This version of select doesn't return anything; it modifies the input
+     * arrays, leaving only those Sockets which are readable in read,
+     * writeable in write, and other in others.
+     **/
+    public static function fast_select(read : Array<Socket>,
+                                       write : Array<Socket>,
+                                       others : Array<Socket>,
+                                       ?timeout : Float) : Void
+    {
+        socket_fast_select(read, write, others, timeout);
+    }
+
 	private static var socket_new = cpp.Lib.load("std","socket_new",1);
 	private static var socket_close = cpp.Lib.load("std","socket_close",1);
 	private static var socket_write = cpp.Lib.load("std","socket_write",2);
@@ -232,6 +261,7 @@ class Socket {
 	private static var socket_connect = cpp.Lib.load("std","socket_connect",3);
 	private static var socket_listen = cpp.Lib.load("std","socket_listen",2);
 	private static var socket_select = cpp.Lib.load("std","socket_select",4);
+	private static var socket_fast_select = cpp.Lib.load("std","socket_fast_select",4);
 	private static var socket_bind = cpp.Lib.load("std","socket_bind",3);
 	private static var socket_accept = cpp.Lib.load("std","socket_accept",1);
 	private static var socket_peer = cpp.Lib.load("std","socket_peer",1);

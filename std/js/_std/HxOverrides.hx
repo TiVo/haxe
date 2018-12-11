@@ -48,12 +48,16 @@ class HxOverrides {
 			return d;
 		case 10: // YYYY-MM-DD
 			var k = s.split("-");
-			return new Date(cast k[0],cast untyped k[1] - 1,cast k[2],0,0,0);
-		case 19: // YYYY-MM-DD hh:mm:ss
+			return Date.fromUTC(cast k[0],cast untyped k[1] - 1,cast k[2],0,0,0);
+		case 19: // YYYY-MM-DD hh:mm:ss or YYYY-MM-DDThh:mm:ss
 			var k = s.split(" ");
+			if(k.length < 2) {
+				// try to parse date in this format YYYY-MM-DDThh:mm:ss
+				k = s.split("T");
+			}
 			var y = k[0].split("-");
 			var t = k[1].split(":");
-			return new Date(cast y[0],cast untyped y[1] - 1,cast y[2],cast t[0],cast t[1],cast t[2]);
+            return Date.fromUTC(cast y[0],cast untyped y[1] - 1,cast y[2],cast t[0],cast t[1],cast t[2]);
 		default:
 			throw "Invalid date format : " + s;
 		}

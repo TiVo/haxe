@@ -105,6 +105,20 @@ let make_module ctx mpath file tdecls loadp =
 			c.cl_private <- priv;
 			c.cl_doc <- d.d_doc;
 			c.cl_meta <- d.d_meta;
+            (* TiVo special HACK to force our mdo fixup macro in *)
+            let is_std_file file =
+                List.exists (fun path -> ExtString.String.starts_with file (Common.unique_full_path path)) ctx.com.std_path in
+            let tivo_hack_enabled =
+                Common.defined ctx.com Define.TiVoApplyMdoFixupMacro in
+            if not ctx.in_macro && tivo_hack_enabled && not (is_std_file m.m_extra.m_file) then begin
+                let hack =
+                    let e = EConst (Ident "com.tivo.core.trio"),p in
+                    let e = EField(e, "MdoFixupMacro"),p in
+                    let e = EField(e, "process"),p in
+                    let e = ECall(e,[]),p in
+		            (Meta.Build,[e],p) in
+                c.cl_meta <- hack :: c.cl_meta
+            end;
 			decls := (TClassDecl c, decl) :: !decls;
 			acc
 		| EEnum d ->
@@ -3172,6 +3186,8 @@ let rec init_module_type ctx context_init do_init (decl,p) =
 				(match at with TAbstract(a2,_) when a == a2 -> error "Abstract underlying type cannot be recursive" a.a_pos | _ -> ());
 				a.a_this <- at;
 				is_type := true;
+			| AExtern ->
+				(match a.a_impl with Some c -> c.cl_extern <- true | None -> (* Hmmmm.... *) ())
 			| APrivAbstract -> ()
 		) d.d_flags;
 		if not !is_type then begin

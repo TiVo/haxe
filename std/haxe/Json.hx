@@ -20,6 +20,8 @@
  * DEALINGS IN THE SOFTWARE.
  */
 package haxe;
+import haxe.format.JsonParser;
+import haxe.format.JsonPrinter;
 
 /**
 	Crossplatform JSON API : it will automatically use the optimized native API if available.
@@ -37,7 +39,7 @@ class Json {
 		If given `text` is not valid JSON, an exception will be thrown.
 	**/
 	public static inline function parse( text : String ) : Dynamic {
-		return haxe.format.JsonParser.parse(text);
+		return JsonParser.parse(text);
 	}
 
 	/**
@@ -51,7 +53,7 @@ class Json {
 		Successive levels will be indented by this string.
 	**/
 	public static inline function stringify( value : Dynamic, ?replacer:Dynamic -> Dynamic -> Dynamic, ?space : String ) : String {
-		return haxe.format.JsonPrinter.print(value, replacer, space);
+		return JsonPrinter.print(value, replacer, space);
 	}
 
 }

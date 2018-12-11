@@ -204,6 +204,7 @@ type context =
    mutable ctx_real_void : bool;
    mutable ctx_dynamic_this_ptr : bool;
    mutable ctx_dump_src_pos : unit -> unit;
+   mutable ctx_last_stack_line_dumped : int;  (* TiVo addition *)
    mutable ctx_static_id_curr : int;
    mutable ctx_static_id_used : int;
    mutable ctx_static_id_depth : int;
@@ -227,6 +228,7 @@ let new_context common_ctx writer debug file_info =
    ctx_assigning = false;
    ctx_debug_level = debug;
    ctx_dump_src_pos = (fun() -> ());
+   ctx_last_stack_line_dumped = -1;  (* TiVo addition *)
    ctx_return_from_block = false;
    ctx_tcall_expand_args = false;
    ctx_return_from_internal_node = false;
@@ -879,7 +881,30 @@ let member_type ctx field_object member =
 
 let is_interface obj = is_interface_type obj.etype;;
 
-let should_implement_field x = not (is_extern_field x);;
+let reflective class_def field = not (
+    (Meta.has Meta.NativeGen class_def.cl_meta) ||
+    (Meta.has Meta.Unreflective class_def.cl_meta) ||
+    (Meta.has Meta.Unreflective field.cf_meta) ||
+    (match field.cf_type with
+       | TInst (klass,_) ->  Meta.has Meta.Unreflective klass.cl_meta
+       | _ -> false
+    )
+)
+;;
+
+
+(* TiVo addition -- test whether or not a field can be completely eliminated
+   from emitted source, which is true if it's unreflective inline. *)
+(* XXX -- not can_be_elided if it's an interface property *)
+let can_be_elided class_def field =
+    match field.cf_kind with
+    | Method MethInline -> not (reflective class_def field);
+    | Var { v_read = AccInline } -> not (reflective class_def field);
+    | _ -> false
+;;
+
+(* TiVo -- updated this helper function *)
+let should_implement_field class_def x = not (is_extern_field x or can_be_elided class_def x);;
 
 let is_function_member expression =
    match (follow expression.etype) with | TFun (_,_) -> true | _ -> false;;
@@ -1496,10 +1521,12 @@ let hx_stack_push ctx output clazz func_name pos =
              (" (" ^ esc_file ^ ":" ^ (string_of_int (Lexer.get_error_line pos) ) ^ ")")
            else "") in
          let hash_class_func = gen_hash 0 (clazz^"."^func_name) in
-         let hash_file = gen_hash 0 stripped_file in
+      let hash_file = gen_hash 0 stripped_file in begin
          output ("HX_STACK_FRAME(\"" ^ clazz ^ "\",\"" ^ func_name ^ "\"," ^ hash_class_func ^ ",\"" ^
                full_name ^ "\",\"" ^ esc_file ^ "\"," ^
-               (string_of_int (Lexer.get_error_line pos) ) ^  "," ^ hash_file ^ ")\n")
+			    (string_of_int (Lexer.get_error_line pos) ) ^  "," ^ hash_file ^ ")\n");
+        ctx.ctx_last_stack_line_dumped <- -1;
+           end
       end
    end
 ;;
@@ -2142,8 +2169,12 @@ let gen_expression_tree ctx retval expression_tree set_var tail_code =
          List.iter (fun expression ->
             let want_value = (return_from_block && !remaining = 1) in
             find_local_functions_and_return_blocks_ctx want_value expression;
-            if (ctx.ctx_debug_level>0) then
-               output_i ("HX_STACK_LINE(" ^ (string_of_int (Lexer.get_error_line expression.epos)) ^ ")\n" );
+                let stack_line = Lexer.get_error_line expression.epos in begin
+                (* TiVo addition - only emit stack line if it's unique *)
+                if ((ctx.ctx_debug_level > 0) && (ctx.ctx_last_stack_line_dumped != stack_line)) then
+				       output_i ("HX_STACK_LINE(" ^ (string_of_int stack_line) ^ ")\n" );
+                  ctx.ctx_last_stack_line_dumped <- stack_line;
+                  end;
             output_i "";
             ctx.ctx_return_from_internal_node <- return_from_internal_node;
             if (want_value) then output "return ";
@@ -2565,18 +2596,6 @@ let rec all_virtual_functions clazz =
    | _ -> [] )
 ;;
 
-let reflective class_def field = not (
-    (Meta.has Meta.NativeGen class_def.cl_meta) ||
-    (Meta.has Meta.Unreflective class_def.cl_meta) ||
-    (Meta.has Meta.Unreflective field.cf_meta) ||
-    (match field.cf_type with
-       | TInst (klass,_) ->  Meta.has Meta.Unreflective klass.cl_meta
-       | _ -> false
-    )
-)
-;;
-
-
 
 
 
@@ -2597,7 +2616,10 @@ let gen_field ctx class_def class_name ptr_name dot_name is_static is_interface 
    let decl = get_meta_string field.cf_meta Meta.Decl in
    let has_decl = decl <> "" in
    let nativeGen = has_meta_key class_def.cl_meta Meta.NativeGen in
-   if (is_interface) then begin
+   (* TiVo addition -- If a field can be completely removed from output,
+      emit nothing *)
+   if can_be_elided class_def field then ()
+   else if (is_interface) then begin
       (* Just the dynamic glue  - not even that ... *)
       ()
    end else (match  field.cf_expr with
@@ -2753,6 +2775,9 @@ let gen_member_def ctx class_def is_static is_interface field =
    let remap_name = keyword_remap field.cf_name in
    let nativeGen = has_meta_key class_def.cl_meta Meta.NativeGen in
 
+   (* TiVo addition -- If a field can be completely removed from output,
+      emit nothing *)
+   if (can_be_elided class_def field) then () else begin
    if (is_interface) then begin
       match follow field.cf_type, field.cf_kind with
       | _, Method MethDynamic  -> ()
@@ -2826,6 +2851,7 @@ let gen_member_def ctx class_def is_static is_interface field =
             )
          )
       );
+      end
       end
    ;;
 
@@ -3258,6 +3284,7 @@ let generate_enum_files common_ctx enum_def super_deps meta file_info =
    output_cpp "\t::String(null())\n};\n\n";
 
    (* ENUM - Mark static as used by GC *)
+   output_cpp "static void sMarkStatics(HX_MARK_PARAMS) HX_ATTRIBUTE_SECTION(markmethods);\n";
    output_cpp "static void sMarkStatics(HX_MARK_PARAMS) {\n";
    PMap.iter (fun _ constructor ->
       let name = keyword_remap constructor.ef_name in
@@ -3379,7 +3406,7 @@ let has_new_gc_references class_def =
    | Some _ -> true
    | _ -> (
       let is_gc_reference field =
-      (should_implement_field field) && (is_data_member field) &&
+      (should_implement_field class_def field) && (is_data_member field) &&
          match type_string field.cf_type with
             | "bool" | "int" | "Float" -> false
             | _ -> true
@@ -3425,7 +3452,8 @@ let is_readable class_def field =
    | Var { v_read = AccNever } when (is_extern_field field) -> false
    | Var { v_read = AccInline } -> false
    | Var _ when is_abstract_impl class_def -> false
-   | _ -> true)
+   (* TiVo addition -- readable fields are only fields that aren't elided *)
+   | _ -> not (can_be_elided class_def field))
 ;;
 
 let is_writable class_def field =
@@ -3433,7 +3461,8 @@ let is_writable class_def field =
    | Var { v_write = AccNever } when (is_extern_field field) -> false
    | Var { v_read = AccInline } -> false
    | Var _ when is_abstract_impl class_def -> false
-   | _ -> true)
+   (* TiVo addition -- writable fields are only fields that aren't elided *)
+   | _ -> not (can_be_elided class_def field))
 ;;
 
 
@@ -3482,7 +3511,7 @@ let has_get_static_field class_def =
 
 
 let has_boot_field class_def =
-   List.exists has_field_init (List.filter should_implement_field class_def.cl_ordered_statics);
+   List.exists has_field_init (List.filter (should_implement_field class_def) class_def.cl_ordered_statics);
 ;;
 
 
@@ -3631,13 +3660,14 @@ let generate_class_files common_ctx member_types super_deps constructor_deps cla
       output_cpp ("\t_result_->__construct(" ^ (array_arg_list constructor_var_list) ^ ");\n");
       output_cpp ("\treturn _result_;\n}\n\n");
       if ( (List.length implemented) > 0 ) then begin
+         output_cpp ("#ifdef IPHONE\n#pragma clang optimize off\n#endif\n");
          output_cpp ("hx::Object *" ^ class_name ^ "::__ToInterface(const hx::type_info &inType)\n{\n");
          List.iter (fun interface_name ->
             output_cpp ("\tif (inType==typeid( " ^ interface_name ^ "_obj)) " ^
                "return operator " ^ interface_name ^ "_obj *();\n");
             ) implemented;
          output_cpp ("\treturn super::__ToInterface(inType);\n}\n\n");
-
+         output_cpp ("#ifdef IPHONE\n#pragma clang optimize on\n#endif\n");
 
          List.iter (fun interface_name ->
             output_cpp (class_name ^ "::operator " ^ interface_name ^ "_obj *() { " ^
@@ -3656,13 +3686,15 @@ let generate_class_files common_ctx member_types super_deps constructor_deps cla
    | _ -> ());
 
    let statics_except_meta = statics_except_meta class_def in
-   let implemented_fields = List.filter should_implement_field statics_except_meta in
+   let implemented_fields = List.filter (should_implement_field class_def) statics_except_meta in
    let dump_field_name = (fun field -> output_cpp ("\t" ^  (str field.cf_name) ^ ",\n")) in
-   let implemented_instance_fields = List.filter should_implement_field class_def.cl_ordered_fields in
+   let implemented_instance_fields = List.filter (should_implement_field class_def) class_def.cl_ordered_fields in
 
    List.iter
       (gen_field ctx class_def class_name smart_class_name dot_name false class_def.cl_interface)
-      class_def.cl_ordered_fields;
+        (* TiVo addition -- only generate for fields that should be included,
+           not unreflective inline fields that should be elided *)
+		(List.filter (should_implement_field class_def) class_def.cl_ordered_fields);
    List.iter
       (gen_field ctx class_def class_name smart_class_name dot_name true class_def.cl_interface) statics_except_meta;
    output_cpp "\n";
@@ -3716,14 +3748,14 @@ let generate_class_files common_ctx member_types super_deps constructor_deps cla
          output_cpp "}\n\n";
 
          (* Visit function - explicitly visit all child pointers *)
-         output_cpp ("void " ^ class_name ^ "::__Visit(HX_VISIT_PARAMS)\n{\n");
+		output_cpp ("#ifdef HXCPP_VISIT_ALLOCS\nvoid " ^ class_name ^ "::__Visit(HX_VISIT_PARAMS)\n{\n");
          if (implement_dynamic) then
             output_cpp "\tHX_VISIT_DYNAMIC;\n";
          List.iter (dump_field_iterator "HX_VISIT_MEMBER_NAME") implemented_instance_fields;
          (match super_needs_iteration with
          | "" -> ()
          | super -> output_cpp ("\t" ^ super ^ "::__Visit(HX_VISIT_ARG);\n") );
-         output_cpp "}\n\n";
+		output_cpp "}\n#endif\n\n";
       end;
 
 
@@ -3887,10 +3919,11 @@ let generate_class_files common_ctx member_types super_deps constructor_deps cla
       if (has_get_fields class_def) then begin
          let append_field =
             (fun field -> output_cpp ("\toutFields->push(" ^( str field.cf_name )^ ");\n")) in
-         let is_data_field field = (match follow field.cf_type with | TFun _ -> false | _ -> true) in
+         (* TiVo addition -- ignore unreflective fields *)
+         let is_data_field field = if Meta.has Meta.Unreflective field.cf_meta then false else (match follow field.cf_type with | TFun _ -> false | _ -> true) in
 
          output_cpp ("void " ^ class_name ^ "::__GetFields(Array< ::String> &outFields)\n{\n");
-         List.iter append_field (List.filter is_data_field class_def.cl_ordered_fields);
+         List.iter append_field (List.filter (should_implement_field class_def) (List.filter is_data_field class_def.cl_ordered_fields));
          if (implement_dynamic) then
             output_cpp "\tHX_APPEND_DYNAMIC_FIELDS(outFields);\n";
          output_cpp "\tsuper::__GetFields(outFields);\n";
@@ -3915,9 +3948,10 @@ let generate_class_files common_ctx member_types super_deps constructor_deps cla
          )
       in
 
-      output_cpp "#if HXCPP_SCRIPTABLE\n";
+      output_cpp "#ifdef HXCPP_SCRIPTABLE\n";
 
-      let stored_fields = List.filter is_data_member implemented_instance_fields in
+      (* TiVo addition -- ignore unreflective inline fields *)
+      let stored_fields = List.filter is_data_member (List.filter (fun (f) -> not (can_be_elided class_def f)) implemented_instance_fields) in
       if ( (List.length stored_fields) > 0) then begin
          output_cpp "static hx::StorageInfo sMemberStorageInfo[] = {\n";
          List.iter dump_member_storage stored_fields;
@@ -3925,7 +3959,8 @@ let generate_class_files common_ctx member_types super_deps constructor_deps cla
       end else
          output_cpp "static hx::StorageInfo *sMemberStorageInfo = 0;\n";
 
-      let stored_statics = List.filter is_data_member implemented_fields in
+      (* TiVo addition -- ignore unreflective inline fields *)
+      let stored_statics = List.filter is_data_member (List.filter (fun (f) -> not (can_be_elided class_def f)) implemented_fields) in
       if ( (List.length stored_statics) > 0) then begin
          output_cpp "static hx::StaticInfo sStaticStorageInfo[] = {\n";
          List.iter dump_static_storage stored_statics;
@@ -3936,7 +3971,8 @@ let generate_class_files common_ctx member_types super_deps constructor_deps cla
       output_cpp "#endif\n\n";
    end; (* cl_interface *)
 
-   let reflective_members = List.filter (reflective class_def) implemented_instance_fields in
+   (* TiVo addition -- ignore unreflective inline fields *)
+   let reflective_members = List.filter (reflective class_def) (List.filter (fun (f) -> not (can_be_elided class_def f)) implemented_instance_fields) in
    let sMemberFields = if List.length reflective_members>0 then begin
       output_cpp "static ::String sMemberFields[] = {\n";
       List.iter dump_field_name  reflective_members;
@@ -3948,10 +3984,12 @@ let generate_class_files common_ctx member_types super_deps constructor_deps cla
 
    if (not nativeGen) then begin
       (* Mark static variables as used *)
+      output_cpp "static void sMarkStatics(HX_MARK_PARAMS) HX_ATTRIBUTE_SECTION(markmethods);\n";
       output_cpp "static void sMarkStatics(HX_MARK_PARAMS) {\n";
       output_cpp ("\tHX_MARK_MEMBER_NAME(" ^ class_name ^ "::__mClass,\"__mClass\");\n");
       List.iter (fun field ->
-         if (is_data_member field) then
+         (* TiVo addition -- ignore unreflective inline fields *)
+         if ((is_data_member field) && (not (can_be_elided class_def field))) then
             output_cpp ("\tHX_MARK_MEMBER_NAME(" ^ class_name ^ "::" ^ (keyword_remap field.cf_name) ^ ",\"" ^  field.cf_name ^ "\");\n") )
          implemented_fields;
       output_cpp "};\n\n";
@@ -3961,7 +3999,8 @@ let generate_class_files common_ctx member_types super_deps constructor_deps cla
       output_cpp "static void sVisitStatics(HX_VISIT_PARAMS) {\n";
       output_cpp ("\tHX_VISIT_MEMBER_NAME(" ^ class_name ^ "::__mClass,\"__mClass\");\n");
       List.iter (fun field ->
-         if (is_data_member field) then
+         (* TiVo addition -- ignore unreflective inline fields *)
+         if ((is_data_member field) && (not (can_be_elided class_def field))) then
             output_cpp ("\tHX_VISIT_MEMBER_NAME(" ^ class_name ^ "::" ^ (keyword_remap field.cf_name) ^ ",\"" ^  field.cf_name ^ "\");\n") )
          implemented_fields;
       output_cpp "};\n\n";
@@ -4162,7 +4201,8 @@ let generate_class_files common_ctx member_types super_deps constructor_deps cla
 
    if (has_boot_field class_def) then begin
       output_cpp ("void " ^ class_name ^ "::__boot()\n{\n");
-      List.iter (gen_field_init ctx ) (List.filter should_implement_field class_def.cl_ordered_statics);
+      (* TiVo addition -- ignore unreflective inline fields *)
+      List.iter (gen_field_init ctx ) (List.filter (should_implement_field class_def) (List.filter (fun (f) -> not (can_be_elided class_def f)) class_def.cl_ordered_statics));
       output_cpp ("}\n\n");
    end;
 
@@ -4254,8 +4294,10 @@ let generate_class_files common_ctx member_types super_deps constructor_deps cla
          output_h ("\t\tHX_DECLARE_IMPLEMENT_DYNAMIC;\n");
       output_h ("\t\tstatic void __register();\n");
       if (override_iteration) then begin
-         output_h ("\t\tvoid __Mark(HX_MARK_PARAMS);\n");
+         output_h ("\t\tvoid __Mark(HX_MARK_PARAMS) HX_ATTRIBUTE_SECTION(markmethods);\n");
+        output_h ("#ifdef HXCPP_VISIT_ALLOCS\n");
          output_h ("\t\tvoid __Visit(HX_VISIT_PARAMS);\n");
+        output_h ("#endif\n");
       end;
 
       if ( (List.length implemented) > 0 ) then begin
@@ -4281,7 +4323,7 @@ let generate_class_files common_ctx member_types super_deps constructor_deps cla
    | _ -> ());
 
 
-   List.iter (gen_member_def ctx class_def true class_def.cl_interface) (List.filter should_implement_field class_def.cl_ordered_statics);
+   List.iter (gen_member_def ctx class_def true class_def.cl_interface) (List.filter (should_implement_field class_def) class_def.cl_ordered_statics);
 
    if class_def.cl_interface then begin
       let dumped = ref PMap.empty in
@@ -4299,7 +4341,7 @@ let generate_class_files common_ctx member_types super_deps constructor_deps cla
       in
       dump_def class_def false;
    end else begin
-      List.iter (gen_member_def ctx class_def false false) (List.filter should_implement_field class_def.cl_ordered_fields);
+      List.iter (gen_member_def ctx class_def false false) (List.filter (should_implement_field class_def) class_def.cl_ordered_fields);
    end;
 
 
@@ -4315,7 +4357,8 @@ let generate_class_files common_ctx member_types super_deps constructor_deps cla
       output_h "\tpublic:\n";
       output_h ("\t\t" ^ smart_class_name ^ "_delegate_(IMPL *inDelegate) : mDelegate(inDelegate) {}\n");
       output_h ("\t\thx::Object *__GetRealObject() { return mDelegate; }\n");
-      output_h ("\t\tvoid __Visit(HX_VISIT_PARAMS) { HX_VISIT_OBJECT(mDelegate); }\n");
+      output_h ("#ifdef HXCPP_VISIT_ALLOCS\n");
+      output_h ("\t\tvoid __Visit(HX_VISIT_PARAMS) { HX_VISIT_OBJECT(mDelegate); }\n#endif\n");
 
       let dumped = ref PMap.empty in
       let rec dump_delegate interface =

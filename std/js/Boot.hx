@@ -226,6 +226,11 @@ class Boot {
 	}
 
 	@:ifFeature("typed_cast") private static function __cast(o : Dynamic, t : Dynamic) {
+#if tivo
+        //hack to unify casting behaviour with cpp for Encore. Encore does a lot of casting
+        //of null values, which returns null for haxe cpp but throws on official haxe js
+        if (o == null) return null;
+#end
 		if (__instanceof(o, t)) return o;
 		else throw "Cannot cast " +Std.string(o) + " to " +Std.string(t);
 	}

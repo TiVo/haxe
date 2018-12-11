@@ -1213,7 +1213,8 @@ let run com tctx main =
 	let new_types = List.filter (fun t -> not (is_cached t)) com.types in
 	if use_static_analyzer then begin
 		(* PASS 1: general expression filters *)
-		let filters = [
+        let timer = Common.timer ("running PASS 1 general expression filters") in
+        let filters = [
 			Codegen.AbstractCast.handle_abstract_casts tctx;
 			check_local_vars_init;
 			Optimizer.inline_constructors tctx;
@@ -1222,6 +1223,7 @@ let run com tctx main =
 			captured_vars com;
 		] in
 		List.iter (run_expression_filters tctx filters) new_types;
+        timer();
 		Analyzer.Run.run_on_types tctx new_types;
 		List.iter (iter_expressions [verify_ast tctx]) new_types;
 		let filters = [
@@ -1233,6 +1235,7 @@ let run com tctx main =
 		List.iter (run_expression_filters tctx filters) new_types;
 	end else begin
 		(* PASS 1: general expression filters *)
+        let p1Timer = Common.timer ("running PASS 1 general expression filters") in        
 		let filters = [
 			Codegen.AbstractCast.handle_abstract_casts tctx;
 			blockify_ast;
@@ -1258,15 +1261,20 @@ let run com tctx main =
 		] in
 		List.iter (run_expression_filters tctx filters) new_types;
 		List.iter (iter_expressions [verify_ast tctx]) new_types;
+        p1Timer();
 	end;
 	next_compilation();
+    let filterIterateTimer = Common.timer ("iterating over com.filters") in            
 	List.iter (fun f -> f()) (List.rev com.filters); (* macros onGenerate etc. *)
+    filterIterateTimer();
 	List.iter (save_class_state tctx) new_types;
-	List.iter (fun t ->
+    let secondFilterIterateTimer = Common.timer ("running remove_generic_base & remove_extern_fields filters") in
+    List.iter (fun t ->
 		remove_generic_base tctx t;
 		remove_extern_fields tctx t;
 	) com.types;
-	(* update cache dependencies before DCE is run *)
+    secondFilterIterateTimer();
+    (* update cache dependencies before DCE is run *)
 	Codegen.update_cache_dependencies com;
 	(* check @:remove metadata before DCE so it is ignored there (issue #2923) *)
 	List.iter (check_remove_metadata tctx) com.types;
@@ -1276,13 +1284,16 @@ let run com tctx main =
 	else
 		(try Common.defined_value com Define.Dce with _ -> "no")
 	in
+    let dce_timer = Common.timer ("dce timer for dce_mode: " ^ dce_mode) in 
 	begin match dce_mode with
 		| "full" -> Dce.run com main (not (Common.defined com Define.Interp))
 		| "std" -> Dce.run com main false
 		| "no" -> Dce.fix_accessors com
 		| _ -> failwith ("Unknown DCE mode " ^ dce_mode)
 	end;
-	(* always filter empty abstract implementation classes (issue #1885) *)
+    dce_timer();
+    let filter_empty_abstracts_timer = Common.timer ("filter: empty abstracts") in 
+    (* always filter empty abstract implementation classes (issue #1885) *)
 	List.iter (fun mt -> match mt with
 		| TClassDecl({cl_kind = KAbstractImpl _} as c) when c.cl_ordered_statics = [] && c.cl_ordered_fields = [] && not (Meta.has Meta.Used c.cl_meta) ->
 			c.cl_extern <- true
@@ -1295,7 +1306,9 @@ let run com tctx main =
 				c.cl_extern <- true
 		| _ -> ()
 	) com.types;
+    filter_empty_abstracts_timer();
 	(* PASS 3: type filters *)
+    let type_filters_timer = Common.timer ("PASS 3: type filters") in        
 	let type_filters = [
 		check_private_path;
 		apply_native_paths;
@@ -1307,4 +1320,5 @@ let run com tctx main =
 		commit_features;
 		(if com.config.pf_reserved_type_paths <> [] then check_reserved_type_paths else (fun _ _ -> ()));
 	] in
-	List.iter (fun t -> List.iter (fun f -> f tctx t) type_filters) com.types
+    List.iter (fun t -> List.iter (fun f -> f tctx t) type_filters) com.types;
+    type_filters_timer();

@@ -259,7 +259,8 @@ let write_mappings ctx =
 let newline ctx =
 	match Rbuffer.nth ctx.buf (Rbuffer.length ctx.buf - 1) with
 	| '}' | '{' | ':' | ';' when not ctx.separator -> print ctx "\n%s" ctx.tabs
-	| _ -> print ctx ";\n%s" ctx.tabs
+	| _ -> print ctx ";\n%s" ctx.tabs;
+	flush ctx
 
 let newprop ctx =
 	match Rbuffer.nth ctx.buf (Rbuffer.length ctx.buf - 1) with
@@ -1471,4 +1472,3 @@ let generate com =
 	if com.debug then write_mappings ctx else (try Sys.remove (com.file ^ ".map") with _ -> ());
 	flush ctx;
 	close_out ctx.chan)
-

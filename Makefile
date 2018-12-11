@@ -9,6 +9,7 @@
 #  - use 'make MSVC=1 -f Makefile.win' to build for Windows with OCaml/MSVC
 #
 .SUFFIXES : .ml .mli .cmo .cmi .cmx .mll .mly
+.NOTPARALLEL:
 
 INSTALL_DIR=$(DESTDIR)/usr
 INSTALL_BIN_DIR=$(INSTALL_DIR)/bin
@@ -29,7 +30,13 @@ LIBS=unix str libs/extlib/extLib libs/xml-light/xml-light libs/swflib/swflib \
 	libs/extc/extc libs/neko/neko libs/javalib/java libs/ziplib/zip \
 	libs/ttflib/ttf libs/ilib/il libs/objsize/objsize
 
+
+# On Mac, we don't need (can't have) -lrt, but on Linux, it's needed for clock_gettime
+ifeq ($(shell uname -s),Darwin)
 NATIVE_LIBS=-cclib libs/extc/extc_stubs.o -cclib libs/extc/process_stubs.o -cclib -lz -cclib libs/objsize/c_objsize.o
+else
+NATIVE_LIBS=-cclib libs/extc/extc_stubs.o -cclib libs/extc/process_stubs.o -cclib -lz -cclib -lrt -cclib libs/objsize/c_objsize.o
+endif
 
 ifeq ($(BYTECODE),1)
 	TARGET_FLAG = bytecode
@@ -56,15 +63,12 @@ MODULES=ast type lexer common genxml parser typecore optimizer typeload \
 
 ADD_REVISION?=0
 
-BRANCH=$(shell echo $$APPVEYOR_REPO_NAME | grep -q /haxe && echo $$APPVEYOR_REPO_BRANCH || echo $$TRAVIS_REPO_SLUG | grep -q /haxe && echo $$TRAVIS_BRANCH || git rev-parse --abbrev-ref HEAD)
-COMMIT_SHA=$(shell git rev-parse --short HEAD)
-COMMIT_DATE=$(shell \
-	if [ "$$(uname)" = "Darwin" ]; then \
-		date -u -r $$(git show -s --format=%ct HEAD) +%Y%m%d%H%M%S; \
-	else \
-		date -u -d @$$(git show -s --format=%ct HEAD) +%Y%m%d%H%M%S; \
-	fi \
-)
+# BRANCH=$(shell echo $$APPVEYOR_REPO_NAME | grep -q /haxe && echo $$APPVEYOR_REPO_BRANCH || echo $$TRAVIS_REPO_SLUG | grep -q /haxe && echo $$TRAVIS_BRANCH || git rev-parse --abbrev-ref HEAD)
+# COMMIT_SHA=$(shell git rev-parse --short HEAD)
+# COMMIT_DATE=$(shell git show -s --format=%ci HEAD | grep -oh ....-..-..)
+BRANCH=tivo
+COMMIT_SHA=x
+COMMIT_DATE=now
 PACKAGE_FILE_NAME=haxe_$(COMMIT_DATE)_$(COMMIT_SHA)
 
 # using $(CURDIR) on Windows will not work since it might be a Cygwin path
@@ -260,3 +264,9 @@ clean_package:
 	ocamllex $<
 
 .PHONY: haxe libs version.cmx version.cmo haxelib
+
+.PHONY: default
+default: all tools
+
+.PHONY: clobber
+clobber: clean

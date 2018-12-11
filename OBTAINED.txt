@@ -1,0 +1,5 @@
+git clone --recursive https://github.com/TiVo/haxe.git
+cd haxe
+git checkout development
+
+This is a snapshot at change f7fa452db7187365f824ff5e72134813d58c550d.

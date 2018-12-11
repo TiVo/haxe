@@ -71,6 +71,8 @@ class Int64Helper {
 
 		var noFractions = f - (f % 1);
 
+        // TiVo -- these constants are too large for mips compiler
+#if 0
 		// 2^53-1 and -2^53: these are parseable without loss of precision
 		if (noFractions > 9007199254740991) {
 			throw "Conversion overflow";
@@ -78,6 +80,7 @@ class Int64Helper {
 		if (noFractions < -9007199254740991) {
 			throw "Conversion underflow";
 		}
+#end
 
 		var result = Int64.ofInt(0);
 		var neg = noFractions < 0;

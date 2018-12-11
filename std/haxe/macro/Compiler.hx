@@ -140,7 +140,7 @@ class Compiler {
 		@param classPaths An alternative array of paths (directory names) to use to search for modules to include.
 		       Note that if you pass this argument, only the specified paths will be used for inclusion.
 	**/
-	public static function include( pack : String, ?rec = true, ?ignore : Array<String>, ?classPaths : Array<String> ) {
+	public static function include( pack : String, ?rec = true, ?ignore : Array<String>, ?classPaths : Array<String>, ?fileList : String=null ) {
 		var skip = if( ignore == null ) {
 			function(c) return false;
 		} else {
@@ -170,14 +170,56 @@ class Compiler {
 			var path = pack == '' ? cp : cp + "/" + pack.split(".").join("/");
 			if( !sys.FileSystem.exists(path) || !sys.FileSystem.isDirectory(path) )
 				continue;
-			for( file in sys.FileSystem.readDirectory(path) ) {
-				if( StringTools.endsWith(file, ".hx") ) {
-					var cl = prefix + file.substr(0, file.length - 3);
-					if( skip(cl) )
-						continue;
-					Context.getModule(cl);
-				} else if( rec && sys.FileSystem.isDirectory(path + "/" + file) && !skip(prefix + file) )
-					include(prefix + file, true, ignore, classPaths);
+			// Read the files from the file list and compile them instead of 
+			// searching for all hx files in the class path.
+			if(fileList != null)
+			{
+				var temppath:String = null;
+				
+				// if the fileList string itself is wholepath read from it.
+				// or if it has only the filename, it is assumed that it is
+				// present in current classpath.
+				if(StringTools.startsWith(fileList, "/"))
+				{
+					temppath = fileList;
+				}
+				else
+				{
+					temppath = path + "/" + fileList;
+				}
+
+				if(sys.FileSystem.exists(temppath))
+				{
+					var tempfile = sys.io.File.read(temppath,true);
+					try{
+						while( true ) {
+						var line = StringTools.trim(tempfile.readLine());
+						var myfile = line.split("/").join(".");
+						var cl = myfile.substr(0,myfile.length - 3);
+						if( skip(cl) )
+							continue;
+						Context.getModule(cl);
+						} 
+					}
+					catch( e : haxe.io.Eof ){
+					} 
+				}
+				else
+				{
+					Context.error("Unknown file path: " + temppath, Context.currentPos());
+				}
+			}
+			else
+			{
+				for( file in sys.FileSystem.readDirectory(path) ) {
+					if( StringTools.endsWith(file, ".hx") ) {
+						var cl = prefix + file.substr(0, file.length - 3);
+						if( skip(cl) )
+							continue;
+						Context.getModule(cl);
+					} else if( rec && sys.FileSystem.isDirectory(path + "/" +file) && !skip(prefix + file) )
+						include(prefix + file, true, ignore, classPaths);
+				}
 			}
 		}
 	}

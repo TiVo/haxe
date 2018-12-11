@@ -1,30 +1,9 @@
-/*
- * Copyright (C)2005-2015 Haxe Foundation
- *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included in
- * all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
- */
- package java.vm;
-import java.util.concurrent.Semaphore;
+package java.vm;
 
 @:native('haxe.java.vm.Mutex') class Mutex
 {
-	@:private var lock:Semaphore;
+	@:private var owner:java.lang.Thread;
+	@:private var lockCount:Int = 0;
 
 	/**
 		Creates a mutex, which can be used to acquire a temporary lock to access some resource.
@@ -32,7 +11,7 @@ import java.util.concurrent.Semaphore;
 	**/
 	public function new()
 	{
-		this.lock = new Semaphore(1);
+
 	}
 
 	/**
@@ -40,7 +19,22 @@ import java.util.concurrent.Semaphore;
 	**/
 	public function tryAcquire():Bool
 	{
-		return this.lock.tryAcquire();
+		var ret = false, cur = java.lang.Thread.currentThread();
+		untyped __lock__(this, {
+			var expr = null;
+			if (owner == null)
+			{
+				ret = true;
+				if(lockCount != 0) throw "assert";
+				lockCount = 1;
+				owner = cur;
+			} else if (owner == cur) {
+				ret = true;
+				owner = cur;
+				lockCount++;
+			}
+		});
+		return ret;
 	}
 
 	/**
@@ -49,7 +43,42 @@ import java.util.concurrent.Semaphore;
 	**/
 	public function acquire():Void
 	{
-		this.lock.acquire();
+		var cur = java.lang.Thread.currentThread();
+		untyped __lock__(this, {
+			var expr = null;
+			if (owner == null)
+			{
+				owner = cur;
+				if (lockCount != 0) throw "assert";
+				lockCount = 1;
+			} else if (owner == cur) {
+				lockCount++;
+			} else {
+				var acquired : Bool = false;
+				// Loop until we are able to acquire the lock. This is not busy waiting
+				// and most of the time the while loop will exit after the first iteration.
+				// The scenario in which it is necessary to keep calling wait. 
+				// 1) Mutex is not owned. 2) Thread A comes along and calls acquire and sets current
+ 				// owner to itself. 3) Thread B comes along and calls acquire but mutex is already owned.
+				// 4) Next it checks to see if it is itself that owns it but it isn't. 5) Next it calls
+				// wait(). 6) Thread A now calls release and hence notify(). However, notify is asynchronous
+				// does not result in immediate release of thread B wait(). 7) Thread A or some other thread calls
+				// acquire again and since owner == null, it's able to claim ownership. 9) Thread B wait() finally
+				// releases based on thread A previous notify(). 10) Thead B claims ownership and sets lockCount = 1.
+				// Result is that thread A thinks it owns the Mutex but thread B has hijacked it. Both threads think they
+				// own it and both will try to release it. All kinds of bad stuff happens. 
+				// Solution is to check that owner is still null when release from wait(). If not, we wait again. The wait()
+				// will be released because the thread that snuck in and grabbed the lock will call notify() providing another
+				// chance for thread B to actually get the lock. 
+				while (!acquired)
+				{
+					try { untyped this.wait(); } catch(e:Dynamic) { throw e; }
+					acquired = (owner == null);
+				}
+				lockCount = 1;
+				owner = cur;
+			}
+		});
 	}
 
 	/**
@@ -57,6 +86,17 @@ import java.util.concurrent.Semaphore;
 	**/
 	public function release():Void
 	{
-		this.lock.release();
+		var cur = java.lang.Thread.currentThread();
+		untyped __lock__(this, {
+			var expr = null;
+			if (owner != cur) {
+				throw "This mutex isn't owned by the current thread!";
+			}
+			if (--lockCount == 0)
+			{
+				this.owner = null;
+				untyped this.notify();
+			}
+		});
 	}
 }
