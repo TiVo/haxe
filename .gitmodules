@@ -3,4 +3,5 @@
 	url = https://github.com/HaxeFoundation/ocamllibs.git
 [submodule "extra/haxelib_src"]
 	path = extra/haxelib_src
-	url = https://github.com/HaxeFoundation/haxelib.git
+	url = https://github.com/TiVo/haxelib.git
+	branch = haxetools
